@@ -9,7 +9,18 @@ import traceback
 import subprocess  
 from collections import Counter
 from bs4 import BeautifulSoup
-from PIL import Image, ImageFilter  
+import numpy as np
+from PIL import Image, ImageFilter
+import feedparser  # এটি অবশ্যই উপরে থাকতে হবে
+import edge_tts
+
+try:
+    from moviepy import ImageClip, AudioFileClip, CompositeVideoClip
+    from moviepy.video.fx import CrossFadeIn
+    MOVIEPY_V2 = True
+except ImportError:
+    from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip
+    MOVIEPY_V2 = False
 
 GENERIC_SPORTS_FALLBACKS = [
     "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Basketball Court
@@ -32,12 +43,14 @@ async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
         f.write(submaker.get_srt())
 
 def scrape_article(url):
+    """ওয়েবসাইট থেকে আর্টিকেলের বডি স্ক্র্যাপ এবং সোশ্যাল মিডিয়া সি.টি.এ ব্লক ফিল্টার করার ফাংশন"""
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(url, headers=headers, timeout=15)
     soup = BeautifulSoup(response.text, 'html.parser')
     paragraphs = soup.find_all('p')
     cleaned = []
     
+    # আর্টিকেলের বডি থেকে অপ্রয়োজনীয় সোশ্যাল মিডিয়া ও সি.টি.এ ব্লক ফিল্টার 
     unwanted_phrases = [
         "follow", "read more", "cookies", "subscribe", 
         "social media information", "like our page", 
@@ -60,40 +73,6 @@ def hex_to_ass_color(hex_str, opacity_float=1.0):
     alpha_val = int((1.0 - opacity_float) * 255)
     alpha_hex = f"{alpha_val:02X}"
     return f"&H{alpha_hex}{b}{g}{r}"
-
-def get_audio_duration(audio_path):
-    """FFprobe ব্যবহার করে অত্যন্ত দ্রুত ও হালকা উপায়ে অডিও ফাইলের দৈর্ঘ্য পরিমাপ করা"""
-    cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", audio_path
-    ]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return float(result.stdout.strip())
-    except Exception as e:
-        print(f"Error getting audio duration via ffprobe: {e}")
-        return 0.0
-
-def search_bing_images(keyword, max_results=20):
-    print(f"Searching Bing Images for: '{keyword}'...")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    import urllib.parse
-    url = f"https://www.bing.com/images/search?q={urllib.parse.quote(keyword)}&FORM=HDRSC2"
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            urls = re.findall(r'"murl":"(http[^"]+)"', r.text)
-            unique_urls = []
-            for u in urls:
-                if u not in unique_urls:
-                    unique_urls.append(u)
-            # max_results বাগটি এখানে নিখুঁতভাবে সংশোধন করা হয়েছে 
-            return unique_urls[:max_results]
-    except Exception as e:
-        print(f"Bing Image search failed: {e}")
-    return []
 
 def fallback_wikimedia_images(keyword, max_results=20):
     print(f"Trying Wikimedia Commons fallback for: '{keyword}'...")
@@ -124,9 +103,53 @@ def fallback_wikimedia_images(keyword, max_results=20):
         print(f"Wikimedia API search failed: {e}")
     return []
 
+def search_bing_images(keyword, max_results=20):
+    """গিটহাবের জন্য বিশেষভাবে তৈরি করা আনলিমিটেড এবং সুপার-ফাস্ট Bing Image Scraper"""
+    print(f"Searching Bing Images for: '{keyword}'...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    import urllib.parse
+    url = f"https://www.bing.com/images/search?q={urllib.parse.quote(keyword)}&FORM=HDRSC2"
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            urls = re.findall(r'"murl":"(http[^"]+)"', r.text)
+            unique_urls = []
+            for u in urls:
+                if u not in unique_urls:
+                    unique_urls.append(u)
+            # max_results ভ্যারিয়েবলটি এখানে পারফেক্ট করা হয়েছে 
+            return unique_urls[:max_results]
+    except Exception as e:
+        print(f"Bing Image search failed: {e}")
+    return []
+
+def search_yahoo_images(keyword, max_results=20):
+    """Yahoo Images থেকে হাই-কোয়ালিটি ছবি স্ক্র্যাপ করার ব্যাকআপ ফাংশন"""
+    print(f"Searching Yahoo Images for: '{keyword}'...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    import urllib.parse
+    url = f"https://images.search.yahoo.com/search/images?q={urllib.parse.quote(keyword)}"
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            found = re.findall(r'"murl":"(http[^"]+)"', r.text)
+            if not found:
+                found = re.findall(r'"iurl":"(http[^"]+)"', r.text)
+            unique_urls = []
+            for u in found:
+                if u not in unique_urls:
+                    unique_urls.append(u)
+            return unique_urls[:max_results]
+    except Exception as e:
+        print(f"Yahoo Image search failed: {e}")
+    return []
+
 def scrape_images(keyword, max_results=20):
-    """Bing এবং Yahoo থেকে একযোগে হাই-কোয়ালিটি ছবি স্ক্র্যাপ করার আল্ট্রা-রিলায়েবল ফাংশন"""
-    # max_results কন্ডিশন ফিক্সড করা হয়েছে 
+    """সবগুলো ফ্রি ইমেজ সার্চ ইঞ্জিন মার্জ করে হাইপার-স্ট্যাবল লুপ তৈরি"""
     urls = search_bing_images(keyword, max_results=max_results)
     
     if not urls:
@@ -149,7 +172,8 @@ def select_thumbnail_and_crop(images_dir, output_thumbnail_path):
         try:
             with Image.open(path) as img:
                 w, h = img.size
-                if 1.6 <= (w / h) <= 1.9:
+                ratio = w / h
+                if 1.6 <= ratio <= 1.9:  
                     sixteen_nine_candidates.append(path)
         except Exception: pass
 
@@ -174,19 +198,14 @@ def parse_srt_start_times(srt_path):
         start_times.append(sec)
     return sorted(list(set(start_times)))
 
-def clear_temp_workspace(workspace_dir):
-    """ওয়ার্কস্পেস সম্পূর্ণ ফ্রেশ ও ক্লিন করার ফাংশন"""
-    images_dir = os.path.join(workspace_dir, "images")
-    proc_images_dir = os.path.join(workspace_dir, "processed_images")
-    
+def clear_temp_workspace(workspace_dir, images_dir):
     audio_path = os.path.join(workspace_dir, "audio.mp3")
     srt_path = os.path.join(workspace_dir, "subtitles.srt")
-    slideshow_path = os.path.join(workspace_dir, "slideshow.txt")
     temp_video = os.path.join(workspace_dir, "temp_video.mp4")
     output_video = os.path.join(workspace_dir, "output_video.mp4")
     thumbnail = os.path.join(workspace_dir, "thumbnail.jpg")
     
-    for p in [audio_path, srt_path, slideshow_path, temp_video, output_video, thumbnail]:
+    for p in [audio_path, srt_path, temp_video, output_video, thumbnail]:
         if os.path.exists(p):
             try: os.remove(p)
             except Exception: pass
@@ -195,15 +214,6 @@ def clear_temp_workspace(workspace_dir):
         for f in os.listdir(images_dir):
             try: os.remove(os.path.join(images_dir, f))
             except Exception: pass
-    else:
-        os.makedirs(images_dir, exist_ok=True)
-        
-    if os.path.exists(proc_images_dir):
-        for f in os.listdir(proc_images_dir):
-            try: os.remove(os.path.join(proc_images_dir, f))
-            except Exception: pass
-    else:
-        os.makedirs(proc_images_dir, exist_ok=True)
 
 def upload_to_youtube(video_path, thumbnail_path, title, description):
     from google.oauth2.credentials import Credentials
@@ -252,7 +262,7 @@ def main():
 
     # আপলোড ডাটাবেজ ফাইল লোড
     if not os.path.exists("processed_urls.txt"):
-        print("processed_urls.txt not found. Auto-creating database...")
+        print("processed_urls.txt not found. Auto-creating a fresh database file...")
         with open("processed_urls.txt", "w", encoding="utf-8") as f:
             f.write("")
 
@@ -321,8 +331,8 @@ def main():
 
     workspace_dir = os.path.join(os.getcwd(), 'workspace')
     images_dir = os.path.join(workspace_dir, 'images')
-    proc_images_dir = os.path.join(workspace_dir, 'processed_images')
     os.makedirs(workspace_dir, exist_ok=True)
+    os.makedirs(images_dir, exist_ok=True)
 
     for idx_task, entry in enumerate(candidate_entries):
         title = entry.get("title", "")
@@ -346,8 +356,8 @@ def main():
                 continue
 
         # ক্যান্ডিডেট কনফার্মড! ওয়ার্কস্পেস ক্লিন করা হচ্ছে
-        clear_temp_workspace(workspace_dir)
-        print(f"--- WORKSPACE CLEANED. GENERATING VIDEO FOR: '{title}' ---")
+        clear_temp_workspace(workspace_dir, images_dir)
+        print(f"--- FOLDER CLEANED. GENERATING VIDEO FOR: '{title}' ---")
 
         try:
             # ভয়েস ওভার এবং ক্যাপশন তৈরি 
@@ -355,8 +365,11 @@ def main():
             srt_path = os.path.join(workspace_dir, "subtitles.srt")
             asyncio.run(generate_voice_and_subtitles(scraped_content, config["voice"], audio_path, srt_path))
 
-            # অডিও ডিউরেশন পরিমাপ (FFprobe ব্যবহার করে- ১ সেকেন্ডের কম সময়ে!)
-            audio_duration = get_audio_duration(audio_path)
+            # ডাইনামিক ইমেজ ডাউনলোডার 
+            audio_clip = AudioFileClip(audio_path)
+            audio_duration = audio_clip.duration
+            audio_clip.close() 
+
             max_images = 30 if audio_duration > 240.0 else 20
             print(f"Audio Duration: {audio_duration:.2f}s. Dynamic Target: Download {max_images} images.")
 
@@ -377,7 +390,7 @@ def main():
                         total_downloaded += 1
                 except Exception: pass
 
-            print(f"Collected {total_downloaded} raw images.")
+            print(f"Collected {total_downloaded} images for rendering.")
 
             # যদি ছবি ডাউনলোড না হয়ে ০ থাকে, তবে ক্র্যাশ এড়াতে জেনেরিক স্পোর্টস ছবি নামাবে 
             if total_downloaded == 0:
@@ -391,98 +404,93 @@ def main():
                             total_downloaded += 1
                     except Exception: pass
 
-            # থাম্বনেইল সিলেকশন
+            # থাম্বনেইল
             thumbnail_path = os.path.join(workspace_dir, "thumbnail.jpg")
             select_thumbnail_and_crop(images_dir, thumbnail_path)
 
-            # --- Pillow দিয়ে সুপার-ফাস্ট ব্লার এবং রেশিও প্রসেসিং (১৯২০x১০৮০) ---
-            print("Pre-processing image sizes and blur effects...")
-            img_files = sorted([f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+            # মুভিপাই ভিডিও কম্পাইলেশন 
+            audio_clip = AudioFileClip(audio_path)
+            audio_duration = audio_clip.duration
             
-            for idx, img_name in enumerate(img_files):
-                img_path = os.path.join(images_dir, img_name)
-                try:
-                    with Image.open(img_path) as img:
-                        img_rgb = img.convert('RGB')
-                        w, h = img_rgb.size
-                        ratio = w / h
-                        
-                        if ratio < 1.7:
-                            # লম্বালম্বি ছবি: পেছনে ব্লার ব্যাকগ্রাউন্ড এবং সামনে আসল ছবি বসানো হচ্ছে 
-                            bg = img_rgb.resize((1920, 1080))
-                            bg = bg.filter(ImageFilter.GaussianBlur(radius=20))
-                            
-                            new_width = int(1080 * ratio)
-                            fg = img_rgb.resize((new_width, 1080))
-                            
-                            paste_x = (1920 - new_width) // 2
-                            bg.paste(fg, (paste_x, 0))
-                            final_img = bg
-                        else:
-                            # ল্যান্ডস্কেপ ছবি 
-                            final_img = img_rgb.resize((1920, 1080))
-                            
-                        # প্রসেসড ছবি সেভ করা হচ্ছে
-                        final_img.save(os.path.join(proc_images_dir, f"proc_{idx+1:02d}.jpg"), quality=95)
-                except Exception as e:
-                    print(f"Error pre-processing image {img_name}: {e}")
+            img_files = sorted([f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
+            num_images = len(img_files)
 
-            proc_img_files = sorted([f for f in os.listdir(proc_images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))])
-            num_proc_images = len(proc_img_files)
-
-            # ১১. আরএসএস সাবটাইটেল টাইমিং রিড ও স্লাইডশো কনক্যাট টেক্সট তৈরি 
             start_times = parse_srt_start_times(srt_path)
             if not start_times:
-                clip_dur = audio_duration / num_proc_images
-                start_times = [i*clip_dur for i in range(num_proc_images)]
+                clip_dur = audio_duration / num_images
+                start_times = [i*clip_dur for i in range(num_images)]
             else:
                 if start_times[0] > 0.1: start_times.insert(0, 0.0)
                 else: start_times[0] = 0.0
+    
+            # অডিও ডিউরেশন বাউন্ডারি 
             start_times.append(audio_duration)
 
+            clips = []
+            overlap = 0.5
             num_sentences = len(start_times) - 1
-            
-            # FFmpeg Concat Demuxer এর জন্য স্লাইডশো স্ক্রিপ্ট তৈরি 
-            slideshow_lines = []
+
             for i in range(num_sentences):
                 t_start = start_times[i]
                 t_end = start_times[i+1]
-                duration = t_end - t_start
-                
-                img_name = proc_img_files[i % num_proc_images]
-                # কনক্যাট ফাইলে রিলেটিভ পাথ দিতে হবে 
-                slideshow_lines.append(f"file 'processed_images/{img_name}'")
-                slideshow_lines.append(f"duration {duration:.3f}")
-                
-            # কনক্যাট রুলস অনুযায়ী শেষ ফাইলটি ডাবল লিখতে হয়
-            if num_sentences > 0:
-                last_img = proc_img_files[(num_sentences - 1) % num_proc_images]
-                slideshow_lines.append(f"file 'processed_images/{last_img}'")
-                
-            slideshow_txt_path = os.path.join(workspace_dir, "slideshow.txt")
-            with open(slideshow_txt_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(slideshow_lines))
+                actual_duration = t_end - t_start
+                if actual_duration < 0.2: continue
 
-            # ১২. আপনার দেওয়া প্রজেক্টের স্টাইলে FFmpeg Subprocess দিয়ে ৩ সেকেন্ডে রেন্ডারিং!
-            print("Compiling video at 1080p 30fps using super-fast FFmpeg engine...")
-            temp_video = "temp_video.mp4"
-            
-            # উবুন্টু ক্লাউডের সব প্রসেসর কোর একযোগে ব্যবহার হবে
+                img_name = img_files[i % num_images]
+                img_path = os.path.join(images_dir, img_name)
+                img_pil = Image.open(img_path).convert('RGB')
+                w, h = img_pil.size
+                ratio = w / h
+
+                if ratio < 1.7:
+                    bg_pil = img_pil.resize((1920, 1080)).filter(ImageFilter.GaussianBlur(radius=20))
+                    bg_clip = ImageClip(np.array(bg_pil))
+                    new_width = int(1080 * ratio)
+                    fg_pil = img_pil.resize((new_width, 1080))
+                    fg_clip = ImageClip(np.array(fg_pil))
+
+                    if MOVIEPY_V2:
+                        bg_clip = bg_clip.with_duration(actual_duration)
+                        fg_clip = fg_clip.with_duration(actual_duration).with_position("center")
+                        composite_clip = CompositeVideoClip([bg_clip, fg_clip], size=(1920, 1080)).with_duration(actual_duration)
+                    else:
+                        bg_clip = bg_clip.set_duration(actual_duration)
+                        fg_clip = fg_clip.set_duration(actual_duration).set_position("center")
+                        composite_clip = CompositeVideoClip([bg_clip, fg_clip], size=(1920, 1080)).set_duration(actual_duration)
+                else:
+                    ls_pil = img_pil.resize((1920, 1080))
+                    composite_clip = ImageClip(np.array(ls_pil))
+                    if MOVIEPY_V2: composite_clip = composite_clip.with_duration(actual_duration)
+                    else: composite_clip = composite_clip.set_duration(actual_duration)
+
+                if MOVIEPY_V2:
+                    if i % 2 == 0: composite_clip = composite_clip.resized(lambda t, d=actual_duration: 1.0 + 0.08 * (t / d))
+                    else: composite_clip = composite_clip.resized(lambda t, d=actual_duration: 1.08 - 0.08 * (t / d))
+                    composite_clip = composite_clip.with_fps(30).with_position("center").with_start(t_start)
+                    if i > 0 and actual_duration > overlap:
+                        composite_clip = composite_clip.with_effects([CrossFadeIn(overlap)])
+                else:
+                    if i % 2 == 0: composite_clip = composite_clip.resize(lambda t, d=actual_duration: 1.0 + 0.08 * (t / d))
+                    else: composite_clip = composite_clip.resize(lambda t, d=actual_duration: 1.08 - 0.08 * (t / d))
+                    composite_clip = composite_clip.set_fps(30).set_position("center").set_start(t_start)
+                    if i > 0 and actual_duration > overlap:
+                        composite_clip = composite_clip.crossfadein(overlap)
+
+                clips.append(composite_clip)
+
+            temp_video = os.path.join(workspace_dir, "temp_video.mp4")
+            if MOVIEPY_V2:
+                final_video = CompositeVideoClip(clips, size=(1920, 1080)).with_duration(audio_duration).with_audio(audio_clip)
+            else:
+                final_video = CompositeVideoClip(clips, size=(1920, 1080)).set_duration(audio_duration).set_audio(audio_clip)
+
             num_threads = os.cpu_count() or 4
-            
-            render_command = [
-                "ffmpeg", "-y", "-safe", "0", 
-                "-f", "concat", "-i", "slideshow.txt",
-                "-i", "audio.mp3",
-                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-r", "30",
-                "-threads", str(num_threads),
-                "-c:a", "copy", "-shortest", temp_video
-            ]
-            
-            # রেন্ডারিং রান (১০০ গুণ ফাস্ট!)
-            subprocess.run(render_command, cwd=workspace_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            final_video.write_videofile(temp_video, fps=30, codec="libx264", audio_codec="aac", threads=num_threads, preset="medium", logger=None)
+            audio_clip.close()
+            final_video.close()
+            for c in clips: c.close()
 
-            # ১৩. FFmpeg ও আপনার দেওয়া কাস্টম সাবটাইটেল ডিজাইন বার্নিং
+            # FFmpeg কাস্টম সাবটাইটেল বার্নিং
             f_color = hex_to_ass_color(config["font_color"], 1.0)
             b_color = hex_to_ass_color(config["bg_color"], config["bg_opacity"])
             border_style = config["border_style"]
@@ -491,21 +499,19 @@ def main():
 
             style = f"FontName=Arial,FontSize={font_size},PrimaryColour={f_color},BackColour={b_color},BorderStyle={border_style},Outline=2,Shadow=1,Alignment=2,MarginV={margin_v}"
             
-            print("Burning stylized subtitles using FFmpeg...")
             output_video = os.path.join(workspace_dir, "output_video.mp4")
-            
             cmd = [
                 "ffmpeg", "-y", "-i", "temp_video.mp4",
                 "-vf", f"subtitles=subtitles.srt:force_style='{style}'",
                 "-c:v", "libx264", "-crf", "18", "-c:a", "copy", "output_video.mp4"
             ]
-            subprocess.run(cmd, cwd=workspace_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(cmd, cwd=workspace_dir, check=True)
             
-            # ১৪. ইউটিউব আপলোড 
+            # ইউটিউব আপলোড 
             desc = f"Latest sports news: {title}\n\nGenerated automatically via AI Cloud System."
             upload_to_youtube(output_video, thumbnail_path, title, desc)
 
-            # ১৫. ডাটাবেজ আপডেট 
+            # ডাটাবেজ আপডেট 
             with open("processed_urls.txt", "a", encoding="utf-8") as f:
                 f.write(link + "\n")
             print(f"Database updated for successfully finished video: {title}")
