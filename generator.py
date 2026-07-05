@@ -9,9 +9,9 @@ import traceback
 import subprocess  
 from collections import Counter
 from bs4 import BeautifulSoup
-import numpy as np
-from PIL import Image, ImageFilter
-import feedparser  # এটি অবশ্যই উপরে থাকতে হবে
+import numpy as np  # নামপাই ইমপোর্ট নিশ্চিত করা হয়েছে 
+from PIL import Image, ImageFilter  
+import feedparser  
 import edge_tts
 
 try:
@@ -50,7 +50,6 @@ def scrape_article(url):
     paragraphs = soup.find_all('p')
     cleaned = []
     
-    # আর্টিকেলের বডি থেকে অপ্রয়োজনীয় সোশ্যাল মিডিয়া ও সি.টি.এ ব্লক ফিল্টার 
     unwanted_phrases = [
         "follow", "read more", "cookies", "subscribe", 
         "social media information", "like our page", 
@@ -150,6 +149,7 @@ def search_yahoo_images(keyword, max_results=20):
 
 def scrape_images(keyword, max_results=20):
     """সবগুলো ফ্রি ইমেজ সার্চ ইঞ্জিন মার্জ করে হাইপার-স্ট্যাবল লুপ তৈরি"""
+    # max_results ভ্যারিয়েবলটি এখানে নিখুঁতভাবে রিড করছে 
     urls = search_bing_images(keyword, max_results=max_results)
     
     if not urls:
@@ -262,7 +262,7 @@ def main():
 
     # আপলোড ডাটাবেজ ফাইল লোড
     if not os.path.exists("processed_urls.txt"):
-        print("processed_urls.txt not found. Auto-creating a fresh database file...")
+        print("processed_urls.txt not found. Auto-creating database...")
         with open("processed_urls.txt", "w", encoding="utf-8") as f:
             f.write("")
 
@@ -377,7 +377,7 @@ def main():
             words = re.findall(r'\b[A-Z][a-z]{3,}\b', scraped_content)
             keyword = f"{words[0]} {words[1]}" if len(words) >= 2 else "Sports"
             
-            # আমাদের নতুন ডুয়াল ইঞ্জিন দিয়ে ছবি সার্চ
+            # আমাদের নতুন ডুয়াল ইঞ্জিন দিয়ে ছবি সার্চ (এখানে max_results=max_images নিশ্চিত করা হয়েছে)
             urls = scrape_images(keyword, max_results=max_images)
 
             total_downloaded = 0
