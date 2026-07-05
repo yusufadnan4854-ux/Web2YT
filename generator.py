@@ -10,32 +10,20 @@ import subprocess
 import urllib.parse
 from bs4 import BeautifulSoup
 from collections import Counter
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageStat
 from concurrent.futures import ThreadPoolExecutor
 import feedparser  
 import edge_tts
 
 try:
     from ddgs import DDGS
-    DDG_SDK_AVAILABLE = True
+    DDG_AVAILABLE = True
 except ImportError:
     try:
         from duckduckgo_search import DDGS
-        DDG_SDK_AVAILABLE = True
+        DDG_AVAILABLE = True
     except ImportError:
-        DDG_SDK_AVAILABLE = False
-
-# ১০০০% শতভাগ শুধুই রিয়াল ইনডোর NBA Court, Stadium Floodlights, NBA Ball, Basket & Match Action Visuals!
-# (ফুটবল, রানিং সাইক্লিং লিংক সম্পূর্ণরূপে চিরতরে বিনাশ করা হলো)
-GENERIC_BASKETBALL_FALLBACKS = [
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Basketball Hoop
-    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  # Indoor Court Arena
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80",  # NBA Stadium Lights
-    "https://images.unsplash.com/photo-1518063319789-7217e6706b04?w=1920&q=80",  # Basketball Ball and Net
-    "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1920&q=80",  # Basketball Jersey
-    "https://images.unsplash.com/photo-1608245449230-4ac19066d210?w=1920&q=80",  # NBA Floor Court
-    "https://images.unsplash.com/photo-1519861531473-9200262188bf?w=1920&q=80"   # Arena Stadium Match
-]
+        DDG_AVAILABLE = False
 
 async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
     communicate = edge_tts.Communicate(text, voice)
@@ -50,12 +38,9 @@ async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
         f.write(submaker.get_srt())
 
 def scrape_article(url):
-    """
-    নিউজ সংবাদ সাইটের অরিজিনাল লেখার ইউআরএল লিংকে সরাসরি প্রবেশ করে উক্ত সংবাদের আসল কভার স্পোর্টস ছবি নিমিষেই এক্সট্র্যাক্ট করা 
-    """
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36'}
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=12)
         soup = BeautifulSoup(response.text, 'html.parser')
         
         cleaned_paragraphs = []
@@ -67,130 +52,126 @@ def scrape_article(url):
                 continue
             cleaned_paragraphs.append(text)
             
-        article_text = "\n\n".join(cleaned_paragraphs)
-        
-        # মূল স্পোর্টস খবরের মেটা ডাটা কাভারেজ আসল খেলার স্পেসিফিক রিয়েল হাই-কোয়ালিটি ম্যাচ মেটা ফটোজ সংগ্রহ
-        embedded_article_photos = []
-        for meta in soup.find_all('meta'):
-            if meta.get('property') in ['og:image', 'twitter:image']:
-                c = meta.get('content')
-                if c and c.startswith('http'): embedded_article_photos.append(c)
-                
-        for img in soup.find_all('img'):
-            src = img.get('src') or img.get('data-src')
-            if src and src.startswith('http') and not any(j in src.lower() for j in ['logo', 'icon', 'avatar', 'ad', 'pixel']):
-                embedded_article_photos.append(src)
-                
-        return article_text, list(dict.fromkeys(embedded_article_photos))
+        return "\n\n".join(cleaned_paragraphs)
     except:
-        return "", []
+        return ""
 
-def extract_hyper_relevant_keyword(title, body_text):
-    words = re.findall(r'\b[A-Z][a-z]{3,}\b', body_text) 
-    stop_words = {'That', 'This', 'There', 'With', 'From', 'Have', 'Your', 'Which', 'Will', 
-                  'About', 'Like', 'Just', 'When', 'What', 'Know', 'Feel', 'They', 'Team', 'Game', 'News', 'Full', 'Belief', 'Bold', 'League', 'Summer', 'Report', 'First'}
-    filtered = [w for w in words if w not in stop_words]
-    
-    if len(filtered) >= 2:
-        unique_nouns = list(dict.fromkeys(filtered))[:2]
-        query = f"{' '.join(unique_nouns)} NBA basketball match action"
-    else:
-        clean_words = [cw for cw in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if cw.lower() not in stop_words]
-        main_terms = " ".join(clean_words[:2]) if clean_words else "NBA match"
-        query = f"{main_terms} NBA basketball action match photo"
+def get_primary_keyword_app_logic(text):
+    words = re.findall(r'\b[A-Z][a-z]{3,}\b', text) 
+    if len(words) < 2:
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
         
-    print(f"📊 Hyper-relevant Basketball query generated: '{query}'")
-    return query
+    stop_words = {'that', 'this', 'there', 'with', 'from', 'have', 'your', 'which', 'will', 
+                  'about', 'like', 'just', 'when', 'what', 'know', 'feel', 'they', 'team', 'game', 'news', 'first', 'report'}
+    filtered = [w for w in words if w.lower() not in stop_words]
+    
+    if len(filtered) < 2: 
+        return "NBA Basketball"
+        
+    most_common = Counter(filtered).most_common(2)
+    keyword = f"{most_common[0][0]} {most_common[1][0]}"
+    print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
+    return keyword
 
-def search_wikimedia_images(keyword, max_results=15):
+def fetch_duckduckgo_images_tls_bypass(keyword, max_results=20):
+    """
+    অপশন ২: ডিরেক্ট পাইথন টিএলএস বাইপাস কানেক্টর 
+    vqd ব্রাউজার এনভলপ মেথড দিয়ে সরাসরি ডাকডাকগো জেসন এপিআই সার্ভিস রিট্রিভ করা
+    """
+    print(f"🔍 [Option 2: DDG TLS Bypass Connector] Fetching high-quality images for: '{keyword}'...")
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://duckduckgo.com/'
+    })
+    
+    image_urls = []
     try:
-        url = "https://commons.wikimedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "format": "json",
-            "generator": "search",
-            "gsrsearch": f"filetype:bitmap {keyword} basketball",
-            "gsrlimit": max_results,
-            "prop": "imageinfo",
-            "iiprop": "url"
-        }
-        r = requests.get(url, params=params, timeout=8)
-        if r.status_code == 200:
-            pages = r.json().get("query", {}).get("pages", {})
-            urls = []
-            for p in pages.values():
-                imageinfo = p.get("imageinfo")
-                if imageinfo and len(imageinfo) > 0:
-                    img_url = imageinfo[0].get("url")
-                    if img_url: urls.append(img_url)
-            return urls
-    except: pass
-    return []
-
-def search_google_images_api(keyword, max_results=20):
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    cse_id = os.environ.get("GOOGLE_CSE_ID")
-    
-    if not api_key or not cse_id:
-        return []
+        res = session.get(f"https://duckduckgo.com/?q={urllib.parse.quote(keyword)}", timeout=8)
+        vqd_match = re.search(r'vqd=["\']([^"\']+)["\']', res.text) or re.search(r'vqd=([\d-]+)&', res.text)
         
-    url = "https://www.googleapis.com/customsearch/v1"
-    image_candidates = []
-    
-    for start_index in [1, 11]:
-        try:
+        if vqd_match:
+            vqd = vqd_match.group(1)
             params = {
-                "key": api_key,
-                "cx": cse_id,
-                "q": keyword,
-                "searchType": "image",
-                "start": start_index,
-                "num": 10
+                'l': 'us-en',
+                'o': 'json',
+                'q': keyword,
+                'vqd': vqd,
+                'f': ',,,',
+                'p': '1'
             }
-            r = requests.get(url, params=params, timeout=10)
-            if r.status_code == 200:
-                items = r.json().get("items", [])
-                for item in items:
-                    main_link = item.get("link")
-                    thumb_link = item.get("image", {}).get("thumbnailLink")
-                    if main_link:
-                        image_candidates.append({"main": main_link, "thumb": thumb_link})
+            api_res = session.get("https://duckduckgo.com/i.js", params=params, timeout=8)
+            if api_res.status_code == 200:
+                data = api_res.json()
+                for item in data.get('results', []):
+                    img_link = item.get('image')
+                    if img_link: image_urls.append(img_link)
+    except Exception as e:
+        print(f"DDG Direct session notice: {e}")
+        
+    if len(image_urls) < 5 and DDG_AVAILABLE:
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.images(keyword, max_results=max_results))
+                image_urls.extend([r.get('image') for r in results if r.get('image')])
         except: pass
+        
+    unique_links = list(dict.fromkeys(image_urls))
+    print(f"✅ Total DuckDuckGo Candidate links retrieved: {len(unique_links)}")
+    return unique_links[:max_results]
+
+def filter_and_clean_downloaded_images(images_dir):
+    """
+    সর্বজনীন ডাইনামিক ফিল্টার: সাইজ, পিক্সেল রেজোলিউশন, রেশিও এবং ডাইনামিক কন্টেন্ট রেঞ্জ স্ক্যান
+    যেকোনো ভুয়া গ্রাফিক্স, বিজ্ঞাপন বা অনুপযুক্ত ড্রেসিং সাইট মেমোরি লোগো ছেঁকে বের করে ফেলে দেওয়া।
+    """
+    print("🧹 [Dynamic Smart Filter] Clearing non-relevant photos, small logos, ads and bad aspect ratio visuals...")
+    valid_count = 0
+    all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    
+    for fname in all_files:
+        fpath = os.path.join(images_dir, fname)
+        try:
+            # ১. কেবি প্যানেল ফিল্টার (< ১৫ KB কোনো আসল ফটো হতে পারে না, তা অবশ্যই আইকন বা লোগো বা এড্স)
+            file_size = os.path.getsize(fpath)
+            if file_size < 15360:
+                os.remove(fpath)
+                print(f"   ❌ Filtered small icon/logo ad image ({file_size} B): {fname}")
+                continue
+                
+            with Image.open(fpath) as img:
+                w, h = img.size
+                
+                # ২. অসামঞ্জস্যপূর্ণ ছবির মাত্রা ছাঁটাই 
+                if w < 400 or h < 300:
+                    img.close()
+                    os.remove(fpath)
+                    print(f"   ❌ Filtered small pixel size ({w}x{h}): {fname}")
+                    continue
+                    
+                aspect_ratio = w / float(h)
+                if aspect_ratio < 0.45 or aspect_ratio > 2.6:
+                    img.close()
+                    os.remove(fpath)
+                    print(f"   ❌ Filtered bad banner aspect ratio ({aspect_ratio:.2f}): {fname}")
+                    continue
+                    
+                # ৩. ডাইনামিক স্ট্যাটিক একরঙা ছবি বা ড্রইং লোগো সনাক্ত করে মুছে ফেলা 
+                if img.mode == 'RGB':
+                    stat = ImageStat.Stat(img)
+                    if sum(stat.stddev) < 14: # বৈচিত্র্যহীন ফ্ল্যাট সিঙ্গেল বা কালারলেস অবজেক্ট
+                        img.close()
+                        os.remove(fpath)
+                        print(f"   ❌ Filtered low-detail vector artwork or static box photo: {fname}")
+                        continue
+                        
+            valid_count += 1
+        except Exception:
+            try: os.remove(fpath)
+            except: pass
             
-    return image_candidates
-
-def scrape_images(title, body_text, article_embedded_photos, max_results=30):
-    candidates = []
-    
-    # ১ম প্রধান উইপন: সরাসরি খবর ইউআরএল পাতার নিজস্ব কাভারেজের আসল স্পোর্টস ছবি 
-    print(f"🖼️ Direct Extracted Photos from Article Page found: {len(article_embedded_photos)}")
-    for d_photo in article_embedded_photos:
-        candidates.append({"main": d_photo, "thumb": d_photo})
-        
-    # ২য় প্রাইমারি: উইকিমিডিয়া পাবলিক ফ্রি স্পোর্টস ছবি
-    query_keyword = extract_hyper_relevant_keyword(title, body_text)
-    wiki_urls = search_wikimedia_images(query_keyword, max_results=15)
-    print(f"🌐 Wikimedia Open Public Engine Candidates found: {len(wiki_urls)}")
-    for w_u in wiki_urls:
-        candidates.append({"main": w_u, "thumb": w_u})
-        
-    # ৩য় প্রাইমারি: গুগল এপিআই হাই ডেফিনেশন রেজাল্ট 
-    google_candidates = search_google_images_api(query_keyword, max_results=15)
-    candidates.extend(google_candidates)
-    
-    return candidates
-
-def hex_to_ass_color(hex_str, opacity_float=1.0):
-    hex_str = hex_str.lstrip('#')
-    red, green, blue = hex_str[0:2], hex_str[2:4], hex_str[4:6]
-    alpha_hex = int((1.0 - opacity_float) * 255)
-    return f"&H{alpha_hex:02X}{blue}{green}{red}"
-
-def get_audio_duration(audio_path):
-    try:
-        result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", os.path.abspath(audio_path)], capture_output=True, text=True, check=True)
-        return float(result.stdout.strip())
-    except: return 0.0
+    print(f"✨ Post-Download Cleaning Complete! Kept {valid_count} high-quality images.")
 
 def process_dynamic_thumbnail(images_dir, output_path):
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))]
@@ -225,14 +206,20 @@ def clear_temporary_workspace(ws_dir):
     except: pass
 
 def render_zoom_segment_by_ffmpeg(clip_index, segment_duration, input_img_path, output_segment_path):
+    """
+    গিটহাব অ্যাকশনের অরিজিনাল তীব্র গতির প্যান, জুম এবং স্লাইড ফিল্টার রেন্ডারিং
+    """
     frame_count = max(int(segment_duration * 25), 10)
     
     effect_style = clip_index % 3
     if effect_style == 0:
+        # স্টাইল ০: সেন্টার মোশন জুম-ইন
         lens_filter = f"zoompan=z='zoom+0.0015':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=1920x1080:fps=25"
     elif effect_style == 1:
+        # স্টাইল ১: উপর থেকে নিচে জুম প্যান
         lens_filter = f"zoompan=z='1.03+0.001*in':x='iw/2-(iw/zoom/2)':y='0':d={frame_count}:s=1920x1080:fps=25"
     else:
+        # স্টাইল ২: স্লাইড প্যান টিল্ট ইফেক্ট
         lens_filter = f"zoompan=z='1.03+0.001*in':x='iw/2-(iw/zoom/2)':y='ih-(ih/zoom)':d={frame_count}:s=1920x1080:fps=25"
     
     cmd_arguments = [
@@ -286,6 +273,18 @@ def safe_upload_to_youtube(video_full_path, thumb_full_path, title, video_descri
         except Exception as e:
             print(f"Thumbnail upload failed: {e}")
 
+def hex_to_ass_color(hex_str, opacity_float=1.0):
+    hex_str = hex_str.lstrip('#')
+    red, green, blue = hex_str[0:2], hex_str[2:4], hex_str[4:6]
+    alpha_hex = int((1.0 - opacity_float) * 255)
+    return f"&H{alpha_hex:02X}{blue}{green}{red}"
+
+def get_audio_duration(audio_path):
+    try:
+        result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", os.path.abspath(audio_path)], capture_output=True, text=True, check=True)
+        return float(result.stdout.strip())
+    except: return 0.0
+
 def process_primary_automation_loop():
     if not os.path.exists("config.json"): return
     with open("config.json", "r", encoding="utf-8") as cf: user_settings = json.load(cf)
@@ -338,9 +337,8 @@ def process_primary_automation_loop():
         print("Completed database scraping securely. Scheduled task waiting.")
         return
 
-    # টাইমার সেভ পারফরম্যান্সের জন্য ১ রানে সর্বোচ্চ ২টি আর্টিকেলের স্পিড ব্যাক-টু-ব্যাক প্রসেসিং
-    final_action_items = final_action_items[:2]
-    print(f"📊 Valid Target Found: Processing {len(final_action_items)} new articles based on user preferences...")
+    # 📌 সময়সীমা অনুযায়ী প্রাপ্ত প্রতিটি আর্টিকেলের ধারাবাহিকভাবে ভিডিও উৎপাদন প্রসেসিং
+    print(f"📊 Target Items Found: Processing ALL {len(final_action_items)} matching news articles sequentially for time limit [{time_limit_scale_hrs}h]...")
 
     wkspace = os.path.abspath(os.path.join(os.getcwd(), 'workspace'))
     target_imgdir = os.path.join(wkspace, 'images')
@@ -352,9 +350,11 @@ def process_primary_automation_loop():
 
     for track_loop_counter, finalizer_target in enumerate(final_action_items):
         vid_ttl, lns = finalizer_target.get("title", ""), finalizer_target.get("link", "")
-        print(f"\n[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
+        print(f"\n=========================================================================")
+        print(f"[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
+        print(f"=========================================================================")
 
-        text_chunk_collected, embedded_page_photos = scrape_article(lns)
+        text_chunk_collected = scrape_article(lns)
         content_word_size = len(text_chunk_collected.split())
         
         if content_word_size < require_wc:
@@ -379,58 +379,36 @@ def process_primary_automation_loop():
             path_srt = os.path.join(wkspace, "subtitles.srt")
             
             asyncio.run(generate_voice_and_subtitles(text_chunk_collected, user_settings["voice"], path_mp3, path_srt))
-            
             calc_tlength = get_audio_duration(path_mp3)
 
-            candidates = scrape_images(vid_ttl, text_chunk_collected, embedded_page_photos, max_results=30)
+            primary_subject = get_primary_keyword_app_logic(text_chunk_collected)
+
+            # ডাকডাকগো TLS বায়পাস অপশন
+            candidate_image_urls = fetch_duckduckgo_images_tls_bypass(primary_subject, max_results=25)
 
             succesfully_got_downloads = 0
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
                 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
             }
 
-            for item in candidates:
-                main_url = item.get("main")
-                thumb_url = item.get("thumb")
-                download_done = False
-
-                if main_url:
-                    try:
-                        rd = requests.get(main_url, timeout=4, headers=headers)
-                        if rd.status_code == 200 and len(rd.content) > 10240: 
-                            with open(os.path.join(target_imgdir, f"imv_dw{succesfully_got_downloads:03d}.jpg"), 'wb') as fgxv: 
-                                fgxv.write(rd.content)
-                            succesfully_got_downloads += 1
-                            download_done = True
-                    except: pass
-
-                if not download_done and thumb_url:
-                    try:
-                        rd = requests.get(thumb_url, timeout=4, headers=headers)
-                        if rd.status_code == 200 and len(rd.content) > 2024: 
-                            with open(os.path.join(target_imgdir, f"imv_dw{succesfully_got_downloads:03d}.jpg"), 'wb') as fgxv: 
-                                fgxv.write(rd.content)
-                            succesfully_got_downloads += 1
-                            download_done = True
-                    except: pass
+            for image_link in candidate_image_urls:
+                try:
+                    rd = requests.get(image_link, timeout=5, headers=headers)
+                    if rd.status_code == 200 and len(rd.content) > 12288: # 12 KB+
+                        with open(os.path.join(target_imgdir, f"imv_dw{succesfully_got_downloads:03d}.jpg"), 'wb') as fgxv: 
+                            fgxv.write(rd.content)
+                        succesfully_got_downloads += 1
+                except: pass
 
                 if succesfully_got_downloads >= 20:
                     break
 
-            # বাস্কেটবল সংক্রান্ত স্ট্রিক্ট ফলব্যাক সার্ভিস লোডিং 
-            if succesfully_got_downloads < 8:
-                for idx, fallback_url in enumerate(GENERIC_BASKETBALL_FALLBACKS):
-                    try:
-                        res = requests.get(fallback_url, timeout=5)
-                        if res.status_code == 200:
-                            with open(os.path.join(target_imgdir, f"imv_fb_{idx:03d}.jpg"), 'wb') as fb_f:
-                                fb_f.write(res.content)
-                                succesfully_got_downloads += 1
-                    except: pass
+            # সার্বজনীন ছবি ফিল্টারিং ক্লিনসার চালানো 
+            filter_and_clean_downloaded_images(target_imgdir)
 
             dflocst = sorted([pzbv for pzbv in os.listdir(target_imgdir) if pzbv.endswith(('.jpg','.jpeg','.png'))])
-            print(f"📊 Download process ended! Total downloaded high resolution pictures saved in workspace: {len(dflocst)}")
+            print(f"📊 Saved {len(dflocst)} dynamic image assets in workspace folder.")
 
             if not dflocst: 
                 print("Missing visual components! Skipping target."); continue
@@ -474,6 +452,7 @@ def process_primary_automation_loop():
             lines_for_slider_doc = []
             print(f"Rendering {total_n_segments} unique video clip scenes matching individual sentence audio using FFmpeg...")
 
+            # গিটহাব ক্লাউডের বহু-সিপিইউ টার্বো আল্ট্রাফাস্ট মোশন রেন্ডারিং প্যান স্লাইড জুম ইফেক্ট 
             with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as thex:
                 rendered_segment_tasks = []
                 for sg_ix in range(total_n_segments):
