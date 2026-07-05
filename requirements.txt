@@ -2,6 +2,7 @@ customtkinter
 feedparser
 beautifulsoup4
 requests
+duckduckgo-search
 edge-tts
 numpy
 pillow
