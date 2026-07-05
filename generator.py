@@ -42,20 +42,26 @@ def scrape_article(url):
                 continue
             cleaned_paragraphs.append(text)
             
-        return "\n\n".join(cleaned_paragraphs)
+        article_text = "\n\n".join(cleaned_paragraphs)
+        
+        embedded_article_photos = []
+        for meta in soup.find_all('meta'):
+            if meta.get('property') in ['og:image', 'twitter:image']:
+                c = meta.get('content')
+                if c and c.startswith('http') and not any(j in c.lower() for j in ['logo', 'icon', 'default', 'avatar', 'ad']): 
+                    embedded_article_photos.append(c)
+                    
+        return article_text, list(dict.fromkeys(embedded_article_photos))
     except:
-        return ""
+        return "", []
 
 def get_primary_keyword_app_logic(text):
-    """
-    কম্পিউটারের সফ্টওয়্যারের (app.py) মোস্ট ক্যাপস প্রপার ওয়ার্ড সাবজেক্ট অ্যানালিসিস
-    """
     words = re.findall(r'\b[A-Z][a-z]{3,}\b', text) 
     if len(words) < 2:
         words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
         
     stop_words = {'that', 'this', 'there', 'with', 'from', 'have', 'your', 'which', 'will', 
-                  'about', 'like', 'just', 'when', 'what', 'know', 'feel', 'they', 'team', 'game', 'news', 'first', 'report', 'league'}
+                  'about', 'like', 'just', 'when', 'what', 'know', 'feel', 'they', 'team', 'game', 'news', 'first', 'report', 'league', 'south'}
     filtered = [w for w in words if w.lower() not in stop_words]
     
     if len(filtered) < 2: 
@@ -66,13 +72,10 @@ def get_primary_keyword_app_logic(text):
     print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
     return keyword
 
-def fetch_duckduckgo_from_vercel_bridge(keyword):
-    """
-    আপনার তৈরি Vercel-এর DuckDuckGo Cloud Bridge সরাসরি পাইথন থেকে ১০০% অ্যাক্সেসে ডাকা
-    """
+def search_vercel_cloud_bridge(keyword):
     vercel_endpoint = os.environ.get("VERCEL_BRIDGE_URL")
     if not vercel_endpoint:
-        print("💡 VERCEL_BRIDGE_URL not mapped yet! Ensure workflow .yml has VERCEL_BRIDGE_URL.")
+        print("💡 VERCEL_BRIDGE_URL environment secret not found.")
         return []
     
     try:
@@ -84,14 +87,79 @@ def fetch_duckduckgo_from_vercel_bridge(keyword):
             print(f"🎉 SUCCESS! Vercel DuckDuckGo Bridge delivered {len(images)} high quality images!")
             return images
         else:
-            print(f"⚠️ Vercel Bridge Error HTTP {r.status_code}: {r.text[:100]}")
+            print(f"⚠️ Vercel Bridge Error HTTP {r.status_code}: {r.text[:120]}")
     except Exception as e:
-        print(f"⚠️ Vercel Bridge Fetch Exception: {e}")
+        print(f"⚠️ Vercel Bridge Exception: {e}")
         
     return []
 
+def search_bing_direct_photos(keyword, max_results=20):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36'}
+        url = f"https://www.bing.com/images/search?q={urllib.parse.quote(keyword + ' NBA basketball')}&FORM=HDRSC2"
+        r = requests.get(url, headers=headers, timeout=8)
+        if r.status_code == 200:
+            urls = re.findall(r'"murl":"(http[^"]+)"', r.text)
+            clean_b_links = [u for u in list(dict.fromkeys(urls)) if any(ext in u.lower() for ext in ['.jpg','.jpeg','.png'])]
+            print(f"✅ Bing Public Engine Candidate links retrieved: {len(clean_b_links)}")
+            return clean_b_links[:max_results]
+    except Exception as eb:
+        print(f"Bing Backup Exception: {eb}")
+    return []
+
+def search_wikimedia_images(keyword, max_results=15):
+    try:
+        url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {keyword} basketball",
+            "gsrlimit": max_results,
+            "prop": "imageinfo",
+            "iiprop": "url"
+        }
+        r = requests.get(url, params=params, timeout=8)
+        if r.status_code == 200:
+            pages = r.json().get("query", {}).get("pages", {})
+            urls = []
+            for p in pages.values():
+                imageinfo = p.get("imageinfo")
+                if imageinfo and len(imageinfo) > 0:
+                    img_url = imageinfo[0].get("url")
+                    if img_url and any(ext in img_url.lower() for ext in ['.jpg','.png','.jpeg']):
+                        urls.append(img_url)
+            return urls
+    except: pass
+    return []
+
+def scrape_images_strictly_web(title, body_text, embedded_photos):
+    candidates = []
+    
+    #১. সংবাদ ইউআরএল পাতার মেটা কাভার ফোটোজ
+    for hero_p in embedded_photos:
+        candidates.append(hero_p)
+        
+    subject = get_primary_keyword_app_logic(body_text)
+
+    #২. Vercel Cloud Bridge মাধ্যমে জেনুইন অরিজিনাল DuckDuckGo রেজাল্ট ফেচ 
+    vercel_pics = search_vercel_cloud_bridge(subject)
+    candidates.extend(vercel_pics)
+
+    #৩. বিং সিডিএন পাবলিক অনলাইন কভারেজ
+    if len(candidates) < 8:
+        bing_pics = search_bing_direct_photos(subject, max_results=15)
+        candidates.extend(bing_pics)
+
+    #৪. উইকিমিডিয়া ওপেন পাবলিক মেটা সোর্স
+    if len(candidates) < 8:
+        wiki_pics = search_wikimedia_images(subject, max_results=15)
+        candidates.extend(wiki_pics)
+
+    return list(dict.fromkeys(candidates))
+
 def filter_and_clean_downloaded_images(images_dir):
-    print("🧹 [Dynamic Smart Cleaner] Filtering small dimension logos and ad visuals...")
+    print("🧹 [Dynamic Smart Cleaner] Clearing non-relevant visuals, bad aspect ratios and small logos...")
     valid_count = 0
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     
@@ -99,7 +167,7 @@ def filter_and_clean_downloaded_images(images_dir):
         fpath = os.path.join(images_dir, fname)
         try:
             file_size = os.path.getsize(fpath)
-            if file_size < 12288: # <12 KB
+            if file_size < 12288: # 12 KB
                 os.remove(fpath)
                 continue
                 
@@ -112,14 +180,14 @@ def filter_and_clean_downloaded_images(images_dir):
                     continue
                     
                 aspect_ratio = w / float(h)
-                if aspect_ratio < 0.45 or aspect_ratio > 2.6:
+                if aspect_ratio < 0.40 or aspect_ratio > 2.7:
                     img.close()
                     os.remove(fpath)
                     continue
                     
                 if img.mode == 'RGB':
                     stat = ImageStat.Stat(img)
-                    if sum(stat.stddev) < 14: 
+                    if sum(stat.stddev) < 12: 
                         img.close()
                         os.remove(fpath)
                         continue
@@ -129,7 +197,7 @@ def filter_and_clean_downloaded_images(images_dir):
             try: os.remove(fpath)
             except: pass
             
-    print(f"✨ Post-Download Cleaning Complete! Saved {valid_count} dynamic DuckDuckGo match photos.")
+    print(f"✨ Post-Download Cleaning Complete! Retained {valid_count} high-quality images.")
 
 def process_dynamic_thumbnail(images_dir, output_path):
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))]
@@ -305,7 +373,7 @@ def process_primary_automation_loop():
         print(f"[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
         print(f"=========================================================================")
 
-        text_chunk_collected = scrape_article(lns)
+        text_chunk_collected, embedded_page_photos = scrape_article(lns)
         content_word_size = len(text_chunk_collected.split())
         
         if content_word_size < require_wc:
@@ -332,10 +400,7 @@ def process_primary_automation_loop():
             asyncio.run(generate_voice_and_subtitles(text_chunk_collected, user_settings["voice"], path_mp3, path_srt))
             calc_tlength = get_audio_duration(path_mp3)
 
-            subject_keyword = get_primary_keyword_app_logic(text_chunk_collected)
-
-            # 🎯 প্রধান ড্রাইভার: ১ নম্বর Vercel DuckDuckGo Bridge API দিয়ে ডাকডাগকো কভারের ইমেজেস সার্ভিস তোলা!
-            candidate_image_urls = fetch_duckduckgo_from_vercel_bridge(subject_keyword)
+            candidate_image_urls = scrape_images_strictly_web(vid_ttl, text_chunk_collected, embedded_page_photos)
 
             succesfully_got_downloads = 0
             headers = {
@@ -358,7 +423,7 @@ def process_primary_automation_loop():
             filter_and_clean_downloaded_images(target_imgdir)
 
             dflocst = sorted([pzbv for pzbv in os.listdir(target_imgdir) if pzbv.endswith(('.jpg','.jpeg','.png'))])
-            print(f"📊 Download Process Complete! Saved {len(dflocst)} verified photos.")
+            print(f"📊 Download Process Complete! Retained {len(dflocst)} verified photos.")
 
             if len(dflocst) < 2: 
                 print("Missing adequate visual web photos for this story. Safely skipping target."); continue
