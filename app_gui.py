@@ -52,7 +52,7 @@ class ControlPanelApp(ctk.CTk):
         self.voices_list = [
             "en-US-BrianNeural (US Male - Deep/Professional)",
             "en-US-GuyNeural (US Male - Casual)",
-            "en-GB-RyanNeural (UK - Elegant & British Tone)"
+            "en-GB-RyanNeural (UK Male - Elegant)"
         ]
         self.voice_combo = ctk.CTkComboBox(self, values=self.voices_list, width=600)
         self.voice_combo.pack(padx=40, pady=(0, 8))
@@ -121,7 +121,7 @@ class ControlPanelApp(ctk.CTk):
             except Exception:
                 pass
 
-        # অলটারনেটিভ ডিফল্টস 
+        # অলটারনে티브 ডিফল্টস 
         self.url_entry.insert(0, "https://sports.yahoo.com/nba/rss.xml, https://sports.yahoo.com/nfl/rss.xml")
         self.keyword_entry.insert(0, "odds, fantasy, betting, bet, spread, draft, preview")
         self.body_keyword_entry.insert(0, "injury, out indefinitely, legal, court, police, arrested")
