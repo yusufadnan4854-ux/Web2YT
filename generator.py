@@ -15,17 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 import feedparser  
 import edge_tts
 
-# ১০০% ভেরিফায়েড শুধুই বাস্কেটবল স্টেডিয়াম কোট ও স্পোর্টস প্রোপার্টিজ (ফুটবলের যেকোনো ট্রেস মুক্ত!)
-VERIFIED_BASKETBALL_STOCKS = [
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Hoop
-    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  # Indoor Court
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80",  # Stadium
-    "https://images.unsplash.com/photo-1518063319789-7217e6706b04?w=1920&q=80",  # Net Ball
-    "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1920&q=80",  # NBA Jersey
-    "https://images.unsplash.com/photo-1608245449230-4ac19066d210?w=1920&q=80",  # NBA Court
-    "https://images.unsplash.com/photo-1519861531473-9200262188bf?w=1920&q=80"   # Arena Match
-]
-
 async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
     communicate = edge_tts.Communicate(text, voice)
     submaker = edge_tts.SubMaker()
@@ -53,21 +42,14 @@ def scrape_article(url):
                 continue
             cleaned_paragraphs.append(text)
             
-        article_text = "\n\n".join(cleaned_paragraphs)
-        
-        # সংবাদের পাতার নিজস্ব জেনুইন অরিজিনাল কভার ফোটোজ নেওয়া
-        embedded_article_photos = []
-        for meta in soup.find_all('meta'):
-            if meta.get('property') in ['og:image', 'twitter:image']:
-                c = meta.get('content')
-                if c and c.startswith('http') and not any(j in c.lower() for j in ['logo', 'icon', 'default', 'avatar', 'ad']): 
-                    embedded_article_photos.append(c)
-                    
-        return article_text, list(dict.fromkeys(embedded_article_photos))
+        return "\n\n".join(cleaned_paragraphs)
     except:
-        return "", []
+        return ""
 
 def get_primary_keyword_app_logic(text):
+    """
+    কম্পিউটারের সফ্টওয়্যারের (app.py) মোস্ট ক্যাপস প্রপার ওয়ার্ড সাবজেক্ট অ্যানালিসিস
+    """
     words = re.findall(r'\b[A-Z][a-z]{3,}\b', text) 
     if len(words) < 2:
         words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
@@ -84,81 +66,32 @@ def get_primary_keyword_app_logic(text):
     print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
     return keyword
 
-def search_vercel_cloud_bridge(keyword):
+def fetch_duckduckgo_from_vercel_bridge(keyword):
     """
-    অপশন ১: Vercel Cloud Bridge API Connector
-    গিটহাব সিক্রেট্সে VERCEL_BRIDGE_URL যুক্ত থাকলে তা Vercel সার্ভিস মেক দিয়ে আসল আনব্লকড ডাকডাকগো মেমরির ছবি আনবে
+    আপনার তৈরি Vercel-এর DuckDuckGo Cloud Bridge সরাসরি পাইথন থেকে ১০০% অ্যাক্সেসে ডাকা
     """
     vercel_endpoint = os.environ.get("VERCEL_BRIDGE_URL")
     if not vercel_endpoint:
+        print("💡 VERCEL_BRIDGE_URL not mapped yet! Ensure workflow .yml has VERCEL_BRIDGE_URL.")
         return []
+    
     try:
-        print(f"🌉 [Option 1: Vercel Bridge API] Querying Vercel Serverless DDG for: '{keyword}'...")
-        r = requests.get(f"{vercel_endpoint}?q={urllib.parse.quote(keyword)}", timeout=8)
+        print(f"🌉 [Vercel Cloud Bridge Active] Fetching DuckDuckGo Photos for: '{keyword}'...")
+        r = requests.get(f"{vercel_endpoint}?q={urllib.parse.quote(keyword)}", timeout=10)
         if r.status_code == 200:
             data = r.json()
             images = data.get("images", [])
-            print(f"✅ Vercel Cloud Bridge returned {len(images)} authentic DuckDuckGo images!")
+            print(f"🎉 SUCCESS! Vercel DuckDuckGo Bridge delivered {len(images)} high quality images!")
             return images
+        else:
+            print(f"⚠️ Vercel Bridge Error HTTP {r.status_code}: {r.text[:100]}")
     except Exception as e:
-        print(f"Vercel Bridge Notice: {e}")
-    return []
-
-def search_wikimedia_images(keyword, max_results=20):
-    """
-    উইকিমিডিয়া পাবলিক ওপেন সোর্স REST এপিআই (গিটহাবের কোন ডাটা আইপি কখোনো ব্লক খায় না!)
-    """
-    try:
-        url = "https://commons.wikimedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "format": "json",
-            "generator": "search",
-            "gsrsearch": f"filetype:bitmap {keyword} NBA basketball",
-            "gsrlimit": max_results,
-            "prop": "imageinfo",
-            "iiprop": "url"
-        }
-        r = requests.get(url, params=params, timeout=8)
-        if r.status_code == 200:
-            pages = r.json().get("query", {}).get("pages", {})
-            urls = []
-            for p in pages.values():
-                imageinfo = p.get("imageinfo")
-                if imageinfo and len(imageinfo) > 0:
-                    img_url = imageinfo[0].get("url")
-                    if img_url and any(ext in img_url.lower() for ext in ['.jpg','.png','.jpeg']):
-                        urls.append(img_url)
-            return urls
-    except: pass
-    return []
-
-def scrape_images_triple_pipeline(title, body_text, embedded_photos, max_results=30):
-    candidates = []
-    
-    #১. সংবাদ ইউআরএল পেজ এর প্রফেশনাল মেটা অরিজিনাল কভার ছবি 
-    for hero_p in embedded_photos:
-        candidates.append(hero_p)
+        print(f"⚠️ Vercel Bridge Fetch Exception: {e}")
         
-    subject = get_primary_keyword_app_logic(body_text)
-
-    #২. অপশন ১ - Vercel Cloud Bridge সংযোগ (যদি ভিইআরসেল লিঙ্ক সেটিংস সিক্রেট এ দেওয়া থাকে)
-    vercel_pics = search_vercel_cloud_bridge(subject)
-    candidates.extend(vercel_pics)
-
-    #৩. উইকিমিডিয়া ওপেন পাবলিক মেটা সোর্স ইন্টিগ্রেশন (১০০% আইপি ব্লকিং ফ্রী)
-    if len(candidates) < 8:
-        print(f"🌐 Fetching Unblocked Public Wikimedia Images for: '{subject}'...")
-        wiki_pics = search_wikimedia_images(subject, max_results=15)
-        candidates.extend(wiki_pics)
-
-    return list(dict.fromkeys(candidates))
+    return []
 
 def filter_and_clean_downloaded_images(images_dir):
-    """
-    সর্বজনীন ফিল্টার: সাইজ, পিক্সেল রেজোলিউশন, অতিরিক্ত টেক্সট বোটেল ও অনভিপ্রেত ইমেজ মেমোরি ফাইল ফায়ার ক্লিনার
-    """
-    print("🧹 [Dynamic Smart Filter] Clearing irrelevant icons, ads and small size visuals...")
+    print("🧹 [Dynamic Smart Cleaner] Filtering small dimension logos and ad visuals...")
     valid_count = 0
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     
@@ -166,7 +99,7 @@ def filter_and_clean_downloaded_images(images_dir):
         fpath = os.path.join(images_dir, fname)
         try:
             file_size = os.path.getsize(fpath)
-            if file_size < 12288: # 12 KB
+            if file_size < 12288: # <12 KB
                 os.remove(fpath)
                 continue
                 
@@ -196,7 +129,7 @@ def filter_and_clean_downloaded_images(images_dir):
             try: os.remove(fpath)
             except: pass
             
-    print(f"✨ Post-Download Cleaning Complete! Retained {valid_count} high-quality basketball assets.")
+    print(f"✨ Post-Download Cleaning Complete! Saved {valid_count} dynamic DuckDuckGo match photos.")
 
 def process_dynamic_thumbnail(images_dir, output_path):
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))]
@@ -372,7 +305,7 @@ def process_primary_automation_loop():
         print(f"[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
         print(f"=========================================================================")
 
-        text_chunk_collected, embedded_page_photos = scrape_article(lns)
+        text_chunk_collected = scrape_article(lns)
         content_word_size = len(text_chunk_collected.split())
         
         if content_word_size < require_wc:
@@ -399,8 +332,10 @@ def process_primary_automation_loop():
             asyncio.run(generate_voice_and_subtitles(text_chunk_collected, user_settings["voice"], path_mp3, path_srt))
             calc_tlength = get_audio_duration(path_mp3)
 
-            # ছবি এক্সট্র্যাক্ট পাইপলাইন ৩ লেয়ার সমন্বিত সিস্টেম
-            candidate_image_urls = scrape_images_triple_pipeline(vid_ttl, text_chunk_collected, embedded_page_photos, max_results=30)
+            subject_keyword = get_primary_keyword_app_logic(text_chunk_collected)
+
+            # 🎯 প্রধান ড্রাইভার: ১ নম্বর Vercel DuckDuckGo Bridge API দিয়ে ডাকডাগকো কভারের ইমেজেস সার্ভিস তোলা!
+            candidate_image_urls = fetch_duckduckgo_from_vercel_bridge(subject_keyword)
 
             succesfully_got_downloads = 0
             headers = {
@@ -422,20 +357,11 @@ def process_primary_automation_loop():
 
             filter_and_clean_downloaded_images(target_imgdir)
 
-            if len(os.listdir(target_imgdir)) < 5:
-                for idx, fallback_url in enumerate(VERIFIED_BASKETBALL_STOCKS):
-                    try:
-                        res = requests.get(fallback_url, timeout=5)
-                        if res.status_code == 200:
-                            with open(os.path.join(target_imgdir, f"imv_fb_{idx:03d}.jpg"), 'wb') as fb_f:
-                                fb_f.write(res.content)
-                    except: pass
-
             dflocst = sorted([pzbv for pzbv in os.listdir(target_imgdir) if pzbv.endswith(('.jpg','.jpeg','.png'))])
-            print(f"📊 Download Process Complete! Retained {len(dflocst)} verified NBA basketball images.")
+            print(f"📊 Download Process Complete! Saved {len(dflocst)} verified photos.")
 
-            if not dflocst: 
-                print("Missing visual components! Skipping target."); continue
+            if len(dflocst) < 2: 
+                print("Missing adequate visual web photos for this story. Safely skipping target."); continue
 
             print("Designing Blurred side padded HD 1080p graphics Canvas...")
             process_dynamic_thumbnail(target_imgdir, os.path.join(wkspace, "thumbnail.jpg"))
@@ -483,7 +409,7 @@ def process_primary_automation_loop():
                     if s_gap <= 0: continue
                     img_f = os.path.join(targ_pcdir, pil_rendered_list[sg_ix % len(pil_rendered_list)])
                     output_v_frag = os.path.join(targ_vfrmdir, f"seg_{sg_ix:04d}.mp4")
-                    rendered_segment_tasks.append(thex.submit(render_zoom_segment_by_ffmpeg, sg_ix, s_gap, img_f, output_v_frag))
+                    rendered_segment_tasks.append(thex.submit(render_zoom_segment_by_ffmpeg, sg_ix, s_gap, img_f, output_segment_path))
                     
                 for task_obj in rendered_segment_tasks: 
                     absolute_clip_path = os.path.abspath(task_obj.result()).replace("\\", "/")
