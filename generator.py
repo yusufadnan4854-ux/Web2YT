@@ -55,22 +55,32 @@ def scrape_article(url):
     except:
         return "", []
 
-def get_primary_keyword_app_logic(text):
-    words = re.findall(r'\b[A-Z][a-z]{3,}\b', text) 
-    if len(words) < 2:
-        words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
-        
-    stop_words = {'that', 'this', 'there', 'with', 'from', 'have', 'your', 'which', 'will', 
-                  'about', 'like', 'just', 'when', 'what', 'know', 'feel', 'they', 'team', 'game', 'news', 'first', 'report', 'league', 'south'}
-    filtered = [w for w in words if w.lower() not in stop_words]
+def extract_hyper_relevant_keyword(title, body_text):
+    """
+    স্মার্ট হাইব্রিড কম্বিনেশন ফর্মুলা: 
+    [খেলোয়াড়ের নাম] + [দলের নাম] + [খেলার নাম/ম্যাচ অপশন]
+    """
+    words = re.findall(r'\b[A-Z][a-z]{3,}\b', body_text)
+    stop_words = {'That', 'This', 'There', 'With', 'From', 'Have', 'Your', 'Which', 'Will', 
+                  'About', 'Like', 'Just', 'When', 'What', 'Know', 'Feel', 'They', 'Team', 'Game', 
+                  'News', 'First', 'Report', 'League', 'South', 'Post', 'Draft', 'Roster'}
     
-    if len(filtered) < 2: 
-        return "NBA Basketball match"
+    filtered = [w for w in words if w not in stop_words]
+    
+    if len(filtered) >= 2:
+        unique_nouns = list(dict.fromkeys(filtered))[:2]
+        query = f"{' '.join(unique_nouns)} NBA basketball match action"
+    elif len(filtered) == 1:
+        clean_words = [cw for cw in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if cw.lower() not in stop_words]
+        team_word = clean_words[0] if clean_words else "match"
+        query = f"{filtered[0]} {team_word} NBA basketball action photo"
+    else:
+        clean_words = [cw for cw in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if cw.lower() not in stop_words]
+        main_terms = " ".join(clean_words[:2]) if clean_words else "NBA match"
+        query = f"{main_terms} NBA basketball action match photo"
         
-    most_common = Counter(filtered).most_common(2)
-    keyword = f"{most_common[0][0]} {most_common[1][0]}"
-    print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
-    return keyword
+    print(f"📊 [Hybrid Query Generator] Query Built: '{query}'")
+    return query
 
 def search_vercel_cloud_bridge(keyword):
     vercel_endpoint = os.environ.get("VERCEL_BRIDGE_URL")
@@ -93,7 +103,7 @@ def search_vercel_cloud_bridge(keyword):
 def search_bing_direct_photos(keyword, max_results=20):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36'}
-        url = f"https://www.bing.com/images/async?q={urllib.parse.quote(keyword + ' NBA basketball')}&first=1&count=25"
+        url = f"https://www.bing.com/images/async?q={urllib.parse.quote(keyword)}&first=1&count=25"
         r = requests.get(url, headers=headers, timeout=8)
         if r.status_code == 200:
             urls = re.findall(r'murl&quot;:&quot;(http[^&]+)&quot;', r.text) or re.findall(r'"murl":"(http[^"]+)"', r.text)
@@ -111,7 +121,7 @@ def search_wikimedia_images(keyword, max_results=15):
             "action": "query",
             "format": "json",
             "generator": "search",
-            "gsrsearch": f"filetype:bitmap {keyword} basketball",
+            "gsrsearch": f"filetype:bitmap {keyword}",
             "gsrlimit": max_results,
             "prop": "imageinfo",
             "iiprop": "url"
@@ -133,19 +143,23 @@ def search_wikimedia_images(keyword, max_results=15):
 def scrape_images_strictly_web(title, body_text, embedded_photos):
     candidates = []
     
+    # ১. সংবাদের মূল ওয়েবসাইটের কাভার হিরো ফটোস 
     for hero_p in embedded_photos:
         candidates.append(hero_p)
         
-    subject = get_primary_keyword_app_logic(body_text)
+    subject_query = extract_hyper_relevant_keyword(title, body_text)
 
-    vercel_pics = search_vercel_cloud_bridge(subject)
+    # ২. Vercel ক্লাউড ডাকডাকগো ব্রিজ পার্সার
+    vercel_pics = search_vercel_cloud_bridge(subject_query)
     candidates.extend(vercel_pics)
 
-    direct_pics = search_bing_direct_photos(subject, max_results=20)
+    # ৩. বিং রিয়েলটাইম সরাসরি পপ ফটো রেজাল্ট
+    direct_pics = search_bing_direct_photos(subject_query, max_results=20)
     candidates.extend(direct_pics)
 
+    # ৪. উইকিমিডিয়া ওপেন পাবলিক মেটা সোর্স 
     if len(candidates) < 8:
-        wiki_pics = search_wikimedia_images(subject, max_results=15)
+        wiki_pics = search_wikimedia_images(subject_query, max_results=15)
         candidates.extend(wiki_pics)
 
     return list(dict.fromkeys(candidates))
@@ -159,7 +173,7 @@ def filter_and_clean_downloaded_images(images_dir):
         fpath = os.path.join(images_dir, fname)
         try:
             file_size = os.path.getsize(fpath)
-            if file_size < 12288:
+            if file_size < 12288: # <12 KB 
                 os.remove(fpath)
                 continue
                 
@@ -459,7 +473,7 @@ def process_primary_automation_loop():
             lines_for_slider_doc = []
             print(f"Rendering {total_n_segments} unique video clip scenes matching individual sentence audio using FFmpeg...")
 
-            # সঠিক নাম ফিক্সিং: output_segment_path ডিক্লারেশন সেশন 
+            # সঠিক ম্যাপিং `output_segment_path` ডিক্লারেশন সেশন 
             with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as thex:
                 rendered_segment_tasks = []
                 for sg_ix in range(total_n_segments):
