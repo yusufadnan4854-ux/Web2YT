@@ -16,21 +16,24 @@ import feedparser
 import edge_tts
 
 try:
-    from moviepy import ImageClip
-    MOVIEPY_V2 = True
+    from ddgs import DDGS
+    DDG_SDK_AVAILABLE = True
 except ImportError:
-    from moviepy.editor import ImageClip
-    MOVIEPY_V2 = False
+    try:
+        from duckduckgo_search import DDGS
+        DDG_SDK_AVAILABLE = True
+    except ImportError:
+        DDG_SDK_AVAILABLE = False
 
-# ১০০০% শুধু এবং শুধুই NBA Basketball, Arena, Hoop & Court Visuals (জিরো ট্রাশ, জিরো আদার স্পোর্টস!)
+# ১০০০% শতভাগ শুধুই রিয়াল ইনডোর NBA Court, Stadium Floodlights, NBA Ball, Basket & Match Action Visuals!
+# (ফুটবল, রানিং সাইক্লিং লিংক সম্পূর্ণরূপে চিরতরে বিনাশ করা হলো)
 GENERIC_BASKETBALL_FALLBACKS = [
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Hoop HD
-    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  # Court Indoor
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80",  # Arena lights
-    "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1920&q=80",  # Dunk Action
-    "https://images.unsplash.com/photo-1518063319789-7217e6706b04?w=1920&q=80",  # Net Basketball Ball
+    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Basketball Hoop
+    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  # Indoor Court Arena
+    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80",  # NBA Stadium Lights
+    "https://images.unsplash.com/photo-1518063319789-7217e6706b04?w=1920&q=80",  # Basketball Ball and Net
     "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1920&q=80",  # Basketball Jersey
-    "https://images.unsplash.com/photo-1608245449230-4ac19066d210?w=1920&q=80",  # NBA Court Action
+    "https://images.unsplash.com/photo-1608245449230-4ac19066d210?w=1920&q=80",  # NBA Floor Court
     "https://images.unsplash.com/photo-1519861531473-9200262188bf?w=1920&q=80"   # Arena Stadium Match
 ]
 
@@ -48,7 +51,7 @@ async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
 
 def scrape_article(url):
     """
-    নিউজ সংবাদ সাইটের লেখা ডায়েরি ক্রলিংয়ের সাথে সাথে সরাসরি ইউআরএলের আসল স্পোর্টস ছবিও ডিরেক্ট এক্সট্র্যাক্ট করা 
+    নিউজ সংবাদ সাইটের অরিজিনাল লেখার ইউআরএল লিংকে সরাসরি প্রবেশ করে উক্ত সংবাদের আসল কভার স্পোর্টস ছবি নিমিষেই এক্সট্র্যাক্ট করা 
     """
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36'}
     try:
@@ -66,7 +69,7 @@ def scrape_article(url):
             
         article_text = "\n\n".join(cleaned_paragraphs)
         
-        # সংবাদের পাতার নিজের ভেতর সরাসরি জমা থাকা আসল ম্যাচের ছবি রিট্রিভ করা 
+        # মূল স্পোর্টস খবরের মেটা ডাটা কাভারেজ আসল খেলার স্পেসিফিক রিয়েল হাই-কোয়ালিটি ম্যাচ মেটা ফটোজ সংগ্রহ
         embedded_article_photos = []
         for meta in soup.find_all('meta'):
             if meta.get('property') in ['og:image', 'twitter:image']:
@@ -90,7 +93,7 @@ def extract_hyper_relevant_keyword(title, body_text):
     
     if len(filtered) >= 2:
         unique_nouns = list(dict.fromkeys(filtered))[:2]
-        query = f"{' '.join(unique_nouns)} NBA basketball"
+        query = f"{' '.join(unique_nouns)} NBA basketball match action"
     else:
         clean_words = [cw for cw in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if cw.lower() not in stop_words]
         main_terms = " ".join(clean_words[:2]) if clean_words else "NBA match"
@@ -100,9 +103,6 @@ def extract_hyper_relevant_keyword(title, body_text):
     return query
 
 def search_wikimedia_images(keyword, max_results=15):
-    """
-    ১০০% আনব্লক মেটা লাইব্রেরি
-    """
     try:
         url = "https://commons.wikimedia.org/w/api.php"
         params = {
@@ -162,19 +162,19 @@ def search_google_images_api(keyword, max_results=20):
 def scrape_images(title, body_text, article_embedded_photos, max_results=30):
     candidates = []
     
-    # ১ম ও সর্বোচ্চ প্রাধিকার: উক্ত খবরের আসল পাতার নিজস্ব কভার ও ম্যাচ ফটোস
+    # ১ম প্রধান উইপন: সরাসরি খবর ইউআরএল পাতার নিজস্ব কাভারেজের আসল স্পোর্টস ছবি 
     print(f"🖼️ Direct Extracted Photos from Article Page found: {len(article_embedded_photos)}")
     for d_photo in article_embedded_photos:
         candidates.append({"main": d_photo, "thumb": d_photo})
         
-    # ২য় প্রাইমারি: উইকিমিডিয়া ওপেন পাবলিক মেটা সোর্স
+    # ২য় প্রাইমারি: উইকিমিডিয়া পাবলিক ফ্রি স্পোর্টস ছবি
     query_keyword = extract_hyper_relevant_keyword(title, body_text)
     wiki_urls = search_wikimedia_images(query_keyword, max_results=15)
     print(f"🌐 Wikimedia Open Public Engine Candidates found: {len(wiki_urls)}")
     for w_u in wiki_urls:
         candidates.append({"main": w_u, "thumb": w_u})
         
-    # ৩য় প্রাইমারি: গুগল ইমেজেস সিএসই সার্ভিস 
+    # ৩য় প্রাইমারি: গুগল এপিআই হাই ডেফিনেশন রেজাল্ট 
     google_candidates = search_google_images_api(query_keyword, max_results=15)
     candidates.extend(google_candidates)
     
@@ -338,7 +338,9 @@ def process_primary_automation_loop():
         print("Completed database scraping securely. Scheduled task waiting.")
         return
 
-    print(f"📊 Valid Target Found: Processing {len(final_action_items)} new articles based on user time setting [{time_limit_scale_hrs}h]...")
+    # টাইমার সেভ পারফরম্যান্সের জন্য ১ রানে সর্বোচ্চ ২টি আর্টিকেলের স্পিড ব্যাক-টু-ব্যাক প্রসেসিং
+    final_action_items = final_action_items[:2]
+    print(f"📊 Valid Target Found: Processing {len(final_action_items)} new articles based on user preferences...")
 
     wkspace = os.path.abspath(os.path.join(os.getcwd(), 'workspace'))
     target_imgdir = os.path.join(wkspace, 'images')
@@ -416,7 +418,7 @@ def process_primary_automation_loop():
                 if succesfully_got_downloads >= 20:
                     break
 
-            # যদি কোনো ব্যাকটেরিয়া এররের কারণে ছবিতে ৮ এর কম অপশন থেকে যায়, তবে সে ক্ষেত্রে শুধু ব্যাকঅ্যান্ডে স্পেশাল বাস্কেটবল কোট আনবে
+            # বাস্কেটবল সংক্রান্ত স্ট্রিক্ট ফলব্যাক সার্ভিস লোডিং 
             if succesfully_got_downloads < 8:
                 for idx, fallback_url in enumerate(GENERIC_BASKETBALL_FALLBACKS):
                     try:
