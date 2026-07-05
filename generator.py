@@ -11,7 +11,6 @@ from collections import Counter
 from bs4 import BeautifulSoup
 import numpy as np
 from PIL import Image, ImageFilter
-from duckduckgo_search import DDGS
 import feedparser
 import edge_tts
 
@@ -23,7 +22,6 @@ except ImportError:
     from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip
     MOVIEPY_V2 = False
 
-# ডাকডাকগো এবং উইকিমিডিয়া ব্লক খেলে হাই-কোয়ালিটি ভিডিও সচল রাখার আল্ট্রা-এইচডি স্পোর্টস ব্যাকড্রপস
 GENERIC_SPORTS_FALLBACKS = [
     "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  # Basketball Court
     "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  # Stadium Lights
@@ -45,7 +43,6 @@ async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
         f.write(submaker.get_srt())
 
 def scrape_article(url):
-    """ওয়েবসাইট থেকে আর্টিকেলের বডি স্ক্র্যাপ এবং সোশ্যাল মিডিয়া সি.টি.এ ব্লক ফিল্টার করার ফাংশন"""
     headers = {'User-Agent': 'Mozilla/5.0'}
     response = requests.get(url, headers=headers, timeout=15)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -75,8 +72,29 @@ def hex_to_ass_color(hex_str, opacity_float=1.0):
     alpha_hex = f"{alpha_val:02X}"
     return f"&H{alpha_hex}{b}{g}{r}"
 
+def search_bing_images(keyword, max_results=20):
+    """গিটহাবের জন্য বিশেষভাবে তৈরি করা আনলিমিটেড এবং সুপার-ফাস্ট Bing Image Scraper"""
+    print(f"Searching Bing Images for: '{keyword}'...")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    import urllib.parse
+    url = f"https://www.bing.com/images/search?q={urllib.parse.quote(keyword)}&FORM=HDRSC2"
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            # বিং ইমেজ লিংক এক্সট্রাকশন রেগুলার এক্সপ্রেশন (Regex)
+            urls = re.findall(r'"murl":"(http[^"]+)"', r.text)
+            unique_urls = []
+            for u in urls:
+                if u not in unique_urls:
+                    unique_urls.append(u)
+            return unique_urls[:max_results]
+    except Exception as e:
+        print(f"Bing Image search failed: {e}")
+    return []
+
 def fallback_wikimedia_images(keyword, max_results=20):
-    """উইকিমিডিয়া কমন্স API থেকে সম্পূর্ণ ফ্রিতে ছবি সার্চ করার ফ্লেক্সিবল ফাংশন"""
     print(f"Trying Wikimedia Commons fallback for: '{keyword}'...")
     try:
         url = "https://commons.wikimedia.org/w/api.php"
@@ -314,22 +332,18 @@ def main():
             max_images = 30 if audio_duration > 240.0 else 20
             print(f"Audio Duration: {audio_duration:.2f}s. Dynamic Target: Download {max_images} images.")
 
-            # সার্চ এবং ডাউনলোড 
+            # সার্চ এবং ডাউনলোড (Bing Image Search!)
             words = re.findall(r'\b[A-Z][a-z]{3,}\b', scraped_content)
             keyword = f"{words[0]} {words[1]}" if len(words) >= 2 else "Sports"
             
-            urls = []
-            try:
-                print(f"Searching DDG for {max_images} images: '{keyword}'...")
-                results = DDGS().images(keyword, max_results=max_images)
-                urls = [r.get('image') for r in results if r.get('image')]
-            except Exception as ddg_err:
-                print(f"DuckDuckGo search rate-limited or blocked: {ddg_err}")
+            # মাইক্রোসফট বিং দিয়ে রিয়েল ছবি সার্চ 
+            urls = search_bing_images(keyword, max_results=max_images)
 
-            # যদি DDG রেট-লিমিট বা ব্লকড হয়, তবে উইকিমিডিয়া এবং আনস্প্ল্যাশ ফলব্যাক দিয়ে ভিডিও চালু রাখব 
+            # বিং কোনো কারণে ফেইল করলে উইকিমিডিয়া দিয়ে ট্রাই করবে 
             if not urls:
                 urls = fallback_wikimedia_images(keyword, max_results=max_images)
             
+            # দুটিই ব্লক হলে আনস্প্ল্যাশ স্পোর্টস ব্যাকগ্রাউন্ড দিয়ে ভিডিও সচল রাখবে 
             if not urls:
                 print("No custom images found. Using premium generic sports backdrops as fallback...")
                 urls = GENERIC_SPORTS_FALLBACKS * (max_images // len(GENERIC_SPORTS_FALLBACKS) + 1)
@@ -340,7 +354,6 @@ def main():
                 try:
                     r = requests.get(image_url, timeout=5)
                     if r.status_code == 200:
-                        # এখানে টাইপোটি (idx_img+1) নিখুঁতভাবে নিশ্চিত করা হয়েছে 
                         with open(os.path.join(images_dir, f"img_{idx_img+1:02d}.jpg"), 'wb') as f:
                             f.write(r.content)
                         total_downloaded += 1
