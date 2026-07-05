@@ -33,8 +33,7 @@ jobs:
 
     - name: Run AI Generator Engine
       env:
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
+        VERCEL_BRIDGE_URL: ${{ secrets.VERCEL_BRIDGE_URL }}
         YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
         YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
         YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -42,7 +41,7 @@ jobs:
         python generator.py
 
     - name: Commit & Push Processed URLs Database
-      if: always()  # কোড মাঝপথে ক্র্যাশ করলেও আগের আপলোড ডাটাবেজ সুরক্ষায় সেভ থাকবে
+      if: always()
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
