@@ -206,7 +206,7 @@ def process_primary_automation_loop():
                 collected_feeds.append(p_obj)
         except: pass
 
-    # ক্রনোলজিক্যাল সর্টিং
+    # পুরানো টাইমে শর্ট 
     collected_feeds.sort(key=lambda sxy: getattr(sxy, 'published_parsed', None) or getattr(sxy, 'updated_parsed', None) or (0,), reverse=False)
 
     filter_excluded_title = [xtr.strip().lower() for xtr in user_settings["exclude_title_keywords"].split(",") if xtr.strip()]
@@ -219,7 +219,6 @@ def process_primary_automation_loop():
         if a_link in done_records: 
             continue
             
-        # k / kw এররটি ডাইরেক্ট পরিষ্কার ভেরিয়েবল নামে সলভ করা হলো:
         skip_article = False
         if filter_excluded_title:
             for spam_word in filter_excluded_title:
@@ -302,9 +301,9 @@ def process_primary_automation_loop():
 
             dflocst = sorted([pzbv for pzbv in os.listdir(target_imgdir) if pzbv.endswith(('.jpg','.jpeg','.png'))])
             if not dflocst: 
-                print("Missing total graphical assets globally. Skipping current target... "); continue
+                print("Missing total graphical assets globally interrupting frame renders precisely aborting current target smoothly... "); continue
 
-            print("Constructing display layout aspects mapping accurately handling dimensions over 16:9 1080p full configurations...")
+            print("Constructing display layout aspects mapping accurately handling dimensions over 16:9 1080p full configurations directly over Python Pil filters efficiently natively protecting CPUs...")
             process_dynamic_thumbnail(target_imgdir, os.path.join(wkspace, "thumbnail.jpg"))
 
             for p_file in dflocst:
@@ -354,8 +353,9 @@ def process_primary_automation_loop():
                     rendered_segment_tasks.append(thex.submit(render_zoom_segment_by_ffmpeg, sg_ix, s_gap, img_f, output_v_frag))
                     
                 for task_obj in rendered_segment_tasks: 
-                    # স্লাইডার ফাইলে অ্যাবসলিউট পাথ দিয়ে দেওয়া হলো 
-                    lines_for_slider_doc.append(f"file '{os.path.abspath(task_obj.result()).replace('\\', '/')}'")
+                    # f-string এর ভেতর backslash এড়াতে বাইরে ভ্যারিয়েবল ডিক্লেয়ার করা হলো (Python < 3.12 syntax limitation bypassed!)
+                    absolute_clip_path = os.path.abspath(task_obj.result()).replace("\\", "/")
+                    lines_for_slider_doc.append(f"file '{absolute_clip_path}'")
 
             tmpsldr_txt_path = os.path.join(wkspace, "temp_slider.txt")
             with open(tmpsldr_txt_path, "w", encoding="utf-8") as fw12z: fw12z.write("\n".join(lines_for_slider_doc))
@@ -363,7 +363,7 @@ def process_primary_automation_loop():
             raw_tmp_output = os.path.join(wkspace, "temp_output.mp4")
             fully_finalized_output = os.path.join(wkspace, "output_video.mp4")
             
-            print("Mixing layers completely perfectly safe bypassing block issues dynamically integrating timeline... [Fast Muxing]")
+            print("Mixing layers completely perfectly safe bypassing block issues dynamically integrating timeline...")
             subprocess.run(["ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-safe", "0", "-f", "concat", "-i", os.path.abspath(tmpsldr_txt_path).replace("\\", "/"), "-i", os.path.abspath(path_mp3).replace("\\", "/"), "-c:v", "copy", "-c:a", "copy", "-shortest", os.path.abspath(raw_tmp_output).replace("\\", "/")], check=True)
 
             clx_pri = hex_to_ass_color(user_settings["font_color"], 1.0)
@@ -374,7 +374,7 @@ def process_primary_automation_loop():
             absolute_srt_path = os.path.abspath(path_srt).replace("\\", "/")
             tclmstr_subtitles_filter = f"subtitles='{absolute_srt_path}':force_style='{stylstr_for_subs}'"
 
-            # FFmpeg Command Array is safely updated now (No SyntaxErrors or line breaks!)
+            # FFmpeg Command Array is safely updated now (No SyntaxErrors!)
             subs_cmd = [
                 "ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "error", 
                 "-i", os.path.abspath(raw_tmp_output).replace("\\", "/"), 
