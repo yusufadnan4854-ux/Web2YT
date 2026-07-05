@@ -16,20 +16,26 @@ import feedparser
 import edge_tts
 
 try:
+    from duckduckgo_search import DDGS
+    DDG_SDK_AVAILABLE = True
+except ImportError:
+    DDG_SDK_AVAILABLE = False
+
+try:
     from moviepy import ImageClip
     MOVIEPY_V2 = True
 except ImportError:
     from moviepy.editor import ImageClip
     MOVIEPY_V2 = False
 
-GENERIC_SPORTS_FALLBACKS = [
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80",  
-    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80",  
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80",  
-    "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=1920&q=80",  
-    "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=1920&q=80",  
-    "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1920&q=80",
-    "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1920&q=80"
+# ১০০% শুধুমাত্র NBA Basketball / NBA Match Action ফটো ব্যাকআপ লিডারবোর্ড 
+GENERIC_BASKETBALL_FALLBACKS = [
+    "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1920&q=80", # NBA Hoop Action
+    "https://images.unsplash.com/photo-1519766304817-4f37bda74a27?w=1920&q=80", # NBA Court Match
+    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=1920&q=80", # Stadium Court Match
+    "https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=1920&q=80", # Basketball Match Play
+    "https://images.unsplash.com/photo-1518063319789-7217e6706b04?w=1920&q=80", # Slam dunk match
+    "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1920&q=80"  # Basketball court action
 ]
 
 async def generate_voice_and_subtitles(text, voice, audio_path, srt_path):
@@ -61,20 +67,26 @@ def scrape_article(url):
     return "\n\n".join(cleaned_paragraphs)
 
 def extract_hyper_relevant_keyword(title, body_text):
-    clean_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)
+    """
+    খেলোয়াড়ের নাম থাকলে সেই খেলোয়াড় অনুযায়ী ছবি খুঁজবে। 
+    নাম না থাকলে শুধু ১০০% NBA Basketball ফিল্টার থেকে ইমেজ বের করবে (অন্য খেলা থেকে কখনই না)।
+    """
     words = re.findall(r'\b[A-Z][a-z]{3,}\b', body_text) 
     stop_words = {'That', 'This', 'There', 'With', 'From', 'Have', 'Your', 'Which', 'Will', 
-                  'About', 'Like', 'Just', 'When', 'What', 'Know', 'Feel', 'They', 'Team', 'Game', 'News'}
+                  'About', 'Like', 'Just', 'When', 'What', 'Know', 'Feel', 'They', 'Team', 'Game', 'News', 'Full', 'Belief', 'Bold', 'League', 'Summer', 'Report', 'First'}
     filtered = [w for w in words if w not in stop_words]
     
-    if filtered:
-        most_common = [pair[0] for pair in Counter(filtered).most_common(2)]
-        target_entity = " ".join(most_common)
-        query = f"{target_entity} sports photo"
+    if len(filtered) >= 2:
+        # খেলোয়াড়ের অরিজিনাল ফ্রিকোয়েন্সি নাম এক্সট্র্যাকশন
+        unique_nouns = list(dict.fromkeys(filtered))[:2]
+        query = f"{' '.join(unique_nouns)} NBA basketball match action"
     else:
-        query = f"{clean_title} sports"
+        # নামের তথ্য না থাকলে শিরোনামের মূল টার্মস + Strict NBA Match Action Keywords!
+        clean_words = [cw for cw in re.sub(r'[^a-zA-Z0-9\s]', '', title).split() if cw.lower() not in stop_words]
+        main_terms = " ".join(clean_words[:2]) if clean_words else "NBA match"
+        query = f"{main_terms} NBA basketball action match photo"
         
-    print(f"📊 Hyper-relevant target query generated: '{query}'")
+    print(f"📊 Hyper-relevant Basketball query generated: '{query}'")
     return query
 
 def hex_to_ass_color(hex_str, opacity_float=1.0):
@@ -119,20 +131,43 @@ def search_google_images_api(keyword, max_results=30):
                     thumb_link = item.get("image", {}).get("thumbnailLink")
                     if main_link:
                         image_candidates.append({"main": main_link, "thumb": thumb_link})
+            else:
+                print(f"⚠️ Google API Notice HTTP {r.status_code}: {r.text[:120]}")
         except Exception as e:
-            print(f"⚠️ Google API Fetch Error at index {start_index}: {e}")
+            print(f"⚠️ Google API Fetch Error: {e}")
             
     print(f"✅ Total Google Candidates Collected: {len(image_candidates)}")
     return image_candidates
 
+def search_duckduckgo_fallback(keyword, max_results=25):
+    if not DDG_SDK_AVAILABLE: return []
+    print(f"🔍 [Hybrid Backup Engine] Searching fallback images for: '{keyword}'...")
+    candidates = []
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.images(keyword, max_results=max_results))
+            for res in results:
+                m, t = res.get("image"), res.get("thumbnail")
+                if m: candidates.append({"main": m, "thumb": t})
+        print(f"✅ Hybrid Backup fetched: {len(candidates)} high-res image sources.")
+    except Exception as err:
+        print(f"Hybrid Engine note: {err}")
+    return candidates
+
 def scrape_images(title, body_text, max_results=25):
     query_keyword = extract_hyper_relevant_keyword(title, body_text)
+    
     candidates = search_google_images_api(query_keyword, max_results=max_results)
     
-    if len(candidates) < 10:
-        simplified_query = re.sub(r'[^a-zA-Z0-9\s]', '', title)[:60] + " action match"
-        extra_candidates = search_google_images_api(simplified_query, max_results=max_results)
-        candidates.extend(extra_candidates)
+    if len(candidates) < 8:
+        print("⚡ Low candidates on Google API! Activating Hybrid NBA Backup Crawler Engine...")
+        ddg_cand = search_duckduckgo_fallback(query_keyword, max_results=max_results)
+        candidates.extend(ddg_cand)
+        
+    if len(candidates) < 8:
+        clean_title = re.sub(r'[^a-zA-Z0-9\s]', '', title)[:50] + " NBA match basketball"
+        ddg_cand2 = search_duckduckgo_fallback(clean_title, max_results=max_results)
+        candidates.extend(ddg_cand2)
         
     return candidates
 
@@ -169,9 +204,6 @@ def clear_temporary_workspace(ws_dir):
     except: pass
 
 def render_zoom_segment_by_ffmpeg(clip_index, segment_duration, input_img_path, output_segment_path):
-    """
-    FFmpeg জুমপ্যান মোশনের মেমরি ফ্রেমলক দ্রুত প্রসেসিং (-framerate 25 & :fps=25)
-    """
     frame_count = max(int(segment_duration * 25), 10)
     
     effect_style = clip_index % 3
@@ -216,7 +248,7 @@ def safe_upload_to_youtube(video_full_path, thumb_full_path, title, video_descri
         'snippet': {'title': title[:98], 'description': video_description, 'categoryId': '17'}, 
         'status': {'privacyStatus': 'public', 'selfDeclaredMadeForKids': False}
     }
-    target_job = google_cloud_instance.videos().insert(part="snippet,status", body=pack, media_body=MediaFileUpload(video_full_path, resumable=True, mimetype="video/mp4"))
+    target_job = google_cloud_instance.videos().insert(part="snippet,status", body=body, media_body=MediaFileUpload(video_full_path, resumable=True, mimetype="video/mp4"))
     completed_exec = target_job.execute()
     newly_deployed_id = completed_exec.get('id')
     
@@ -281,8 +313,8 @@ def process_primary_automation_loop():
         print("Completed database scraping securely. Scheduled task waiting.")
         return
 
-    # 📌 গিটহাব রানার সিকিউরিটি লিমিটেশন: প্রতি স্পিড অ্যাকশন রানে নিখুঁত সেরা ১টি টার্গেট পোস্ট তৈরি
-    final_action_items = final_action_items[:1]
+    # 📌 ২৪ ঘন্টার ফিল্টার পূরণকারী সম্পূর্ণ সকল নিউজের জন্য ব্যাক-টু-ব্যাক ভিডিও বানাতে সব ফিল্ড অ্যাক্টিভ থাকবে 
+    print(f"📊 Valid Target Found: Processing {len(final_action_items)} new articles from last 24h feed database...")
 
     wkspace = os.path.abspath(os.path.join(os.getcwd(), 'workspace'))
     target_imgdir = os.path.join(wkspace, 'images')
@@ -294,7 +326,7 @@ def process_primary_automation_loop():
 
     for track_loop_counter, finalizer_target in enumerate(final_action_items):
         vid_ttl, lns = finalizer_target.get("title", ""), finalizer_target.get("link", "")
-        print(f"\n[{track_loop_counter+1}/{len(final_action_items)}] Valid Target Found: >> {vid_ttl}")
+        print(f"\n[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
 
         text_chunk_collected = scrape_article(lns)
         content_word_size = len(text_chunk_collected.split())
@@ -361,7 +393,7 @@ def process_primary_automation_loop():
                     break
 
             if succesfully_got_downloads < 8:
-                for idx, fallback_url in enumerate(GENERIC_SPORTS_FALLBACKS):
+                for idx, fallback_url in enumerate(GENERIC_BASKETBALL_FALLBACKS):
                     try:
                         res = requests.get(fallback_url, timeout=5)
                         if res.status_code == 200:
@@ -415,7 +447,6 @@ def process_primary_automation_loop():
             lines_for_slider_doc = []
             print(f"Rendering {total_n_segments} unique video clip scenes matching individual sentence audio using FFmpeg...")
 
-            # সিপিইউর সব পাওয়ার নিয়ে প্যারালাল ২ মিনিটের মধ্যে কাস্টম রেন্ডারিং সম্পন্ন 
             with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as thex:
                 rendered_segment_tasks = []
                 for sg_ix in range(total_n_segments):
@@ -457,7 +488,7 @@ def process_primary_automation_loop():
             safe_upload_to_youtube(fully_finalized_output, os.path.join(wkspace, "thumbnail.jpg"), vid_ttl, f"Complete Highlights Recap: {vid_ttl}\nGenerated automatically via AI Cloud System.")
             
             with open("processed_urls.txt", "a", encoding="utf-8") as fwx_docv: fwx_docv.write(lns+"\n")
-            print("================ 🎯 Rapid Execution Workflow Complete in <2 Minutes! 💯 ================\n")
+            print("================ 🎯 Complete Workflow Operations executed successfully seamlessly! 💯 ================\n")
 
         except Exception as errp: traceback.print_exc()
 
