@@ -1,7 +1,7 @@
 {
     "rss_urls": "https://sports.yahoo.com/nba/rss.xml",
     "exclude_title_keywords": "odds, betting, bet, trade, trading, Links, link",
-    "exclude_body_keywords": "odds, betting, bet, trade, trading, Links, link",
+    "exclude_body_keywords": "",
     "min_word_count": 125,
     "max_age_hours": 3.0,
     "voice": "en-US-BrianNeural",
@@ -9,6 +9,6 @@
     "bg_color": "#000000",
     "border_style": 1,
     "bg_opacity": 0.6,
-    "font_size": 18,
+    "font_size": 22,
     "margin_v": 20
 }
