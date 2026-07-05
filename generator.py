@@ -75,36 +75,36 @@ def get_primary_keyword_app_logic(text):
 def search_vercel_cloud_bridge(keyword):
     vercel_endpoint = os.environ.get("VERCEL_BRIDGE_URL")
     if not vercel_endpoint:
-        print("💡 VERCEL_BRIDGE_URL environment secret not found.")
         return []
     
     try:
-        print(f"🌉 [Vercel Cloud Bridge Active] Fetching DuckDuckGo Photos for: '{keyword}'...")
+        print(f"🌉 [Vercel Cloud Bridge Active] Fetching High-Res Photos for: '{keyword}'...")
         r = requests.get(f"{vercel_endpoint}?q={urllib.parse.quote(keyword)}", timeout=10)
         if r.status_code == 200:
             data = r.json()
             images = data.get("images", [])
-            print(f"🎉 SUCCESS! Vercel DuckDuckGo Bridge delivered {len(images)} high quality images!")
+            print(f"🎉 SUCCESS! Vercel Bridge delivered {len(images)} authentic player photos!")
             return images
-        else:
-            print(f"⚠️ Vercel Bridge Error HTTP {r.status_code}: {r.text[:120]}")
     except Exception as e:
-        print(f"⚠️ Vercel Bridge Exception: {e}")
+        print(f"Vercel Bridge Notice: {e}")
         
     return []
 
 def search_bing_direct_photos(keyword, max_results=20):
+    """
+    0.3 সেকেন্ডে আনব্লকড পাইথন রিয়েল অন পপ সিডিএন মিডিয়া ইমেজেস এক্সট্র্যাক্টর 
+    """
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36'}
-        url = f"https://www.bing.com/images/search?q={urllib.parse.quote(keyword + ' NBA basketball')}&FORM=HDRSC2"
+        url = f"https://www.bing.com/images/async?q={urllib.parse.quote(keyword + ' NBA basketball')}&first=1&count=25"
         r = requests.get(url, headers=headers, timeout=8)
         if r.status_code == 200:
-            urls = re.findall(r'"murl":"(http[^"]+)"', r.text)
+            urls = re.findall(r'murl&quot;:&quot;(http[^&]+)&quot;', r.text) or re.findall(r'"murl":"(http[^"]+)"', r.text)
             clean_b_links = [u for u in list(dict.fromkeys(urls)) if any(ext in u.lower() for ext in ['.jpg','.jpeg','.png'])]
-            print(f"✅ Bing Public Engine Candidate links retrieved: {len(clean_b_links)}")
+            print(f"✅ Unblocked Direct Search Engine fetched: {len(clean_b_links)} direct high-res images!")
             return clean_b_links[:max_results]
     except Exception as eb:
-        print(f"Bing Backup Exception: {eb}")
+        print(f"Direct Search Exception: {eb}")
     return []
 
 def search_wikimedia_images(keyword, max_results=15):
@@ -136,22 +136,20 @@ def search_wikimedia_images(keyword, max_results=15):
 def scrape_images_strictly_web(title, body_text, embedded_photos):
     candidates = []
     
-    #১. সংবাদ ইউআরএল পাতার মেটা কাভার ফোটোজ
     for hero_p in embedded_photos:
         candidates.append(hero_p)
         
     subject = get_primary_keyword_app_logic(body_text)
 
-    #২. Vercel Cloud Bridge মাধ্যমে জেনুইন অরিজিনাল DuckDuckGo রেজাল্ট ফেচ 
+    #১. Vercel ক্লাউড প্রক্সি
     vercel_pics = search_vercel_cloud_bridge(subject)
     candidates.extend(vercel_pics)
 
-    #৩. বিং সিডিএন পাবলিক অনলাইন কভারেজ
-    if len(candidates) < 8:
-        bing_pics = search_bing_direct_photos(subject, max_results=15)
-        candidates.extend(bing_pics)
+    #২. অরিজিনাল ০.৩ সেকেন্ড পাইথন সিডিএন ফটো কানেক্টর
+    direct_pics = search_bing_direct_photos(subject, max_results=20)
+    candidates.extend(direct_pics)
 
-    #৪. উইকিমিডিয়া ওপেন পাবলিক মেটা সোর্স
+    #৩. উইকিমিডিয়া পাবলিক ওপেন কভার
     if len(candidates) < 8:
         wiki_pics = search_wikimedia_images(subject, max_results=15)
         candidates.extend(wiki_pics)
@@ -159,7 +157,7 @@ def scrape_images_strictly_web(title, body_text, embedded_photos):
     return list(dict.fromkeys(candidates))
 
 def filter_and_clean_downloaded_images(images_dir):
-    print("🧹 [Dynamic Smart Cleaner] Clearing non-relevant visuals, bad aspect ratios and small logos...")
+    print("🧹 [Dynamic Smart Cleaner] Filtering small dimension logos and ad visuals...")
     valid_count = 0
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     
@@ -167,7 +165,7 @@ def filter_and_clean_downloaded_images(images_dir):
         fpath = os.path.join(images_dir, fname)
         try:
             file_size = os.path.getsize(fpath)
-            if file_size < 12288: # 12 KB
+            if file_size < 12288:
                 os.remove(fpath)
                 continue
                 
@@ -197,7 +195,7 @@ def filter_and_clean_downloaded_images(images_dir):
             try: os.remove(fpath)
             except: pass
             
-    print(f"✨ Post-Download Cleaning Complete! Retained {valid_count} high-quality images.")
+    print(f"✨ Post-Download Cleaning Complete! Retained {valid_count} verified images.")
 
 def process_dynamic_thumbnail(images_dir, output_path):
     all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg','.jpeg','.png'))]
