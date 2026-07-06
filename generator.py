@@ -103,7 +103,7 @@ def get_primary_keyword_app_logic(text):
     filtered = [w for w in words if w.lower() not in stop_words]
     
     if len(filtered) < 2: 
-        return "Latest Update" # সম্পূর্ণ সর্বজনীন ও নিরপেক্ষ ফলব্যাক
+        return "Latest Update"
         
     most_common = Counter(filtered).most_common(2)
     keyword = f"{most_common[0][0]} {most_common[1][0]}"
@@ -169,7 +169,7 @@ def search_wikimedia_images(keyword, max_results=15):
     except: pass
     return []
 
-def scrape_images_strictly_web(title, body_text, embedded_photos, global_subject=""):
+def scrape_images_strictly_web(title, body_text, embedded_photos, num_images_needed=20):
     candidates = []
     
     for hero_p in embedded_photos:
@@ -177,78 +177,44 @@ def scrape_images_strictly_web(title, body_text, embedded_photos, global_subject
         
     subject = get_primary_keyword_app_logic(body_text)
 
-    # অপ্রাসঙ্গিক ছবি এড়াতে প্যারাগ্রাফ কিওয়ার্ডের সাথে পুরো আর্টিকেলের গ্লোবাল কিওয়ার্ড যুক্ত করার নিরপেক্ষ লজিক
-    if global_subject and global_subject.lower() not in subject.lower():
-        search_query = f"{subject} {global_subject}"
-    else:
-        search_query = subject
-
-    print(f"🎯 [Context Lock Active] Combining keywords for targeted search: '{search_query}'")
-
     # ১ম প্রায়োরিটি: ডাকডাকগো (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
-    ddg_pics = search_vercel_cloud_bridge(search_query, engine="ddg")
+    ddg_pics = search_vercel_cloud_bridge(subject, engine="ddg")
     candidates.extend(ddg_pics)
+    candidates = list(dict.fromkeys(candidates))
+
+    # ডাকডাকগো থেকে পর্যাপ্ত ছবি পাওয়া গেলে অন্য কোনো সোর্সে সার্চ করা হবে না
+    if len(candidates) >= num_images_needed:
+        print(f"🎯 [Smart Stopping] DuckDuckGo delivered {len(candidates)} images which meets the target of {num_images_needed}. Skipping other sources.")
+        return candidates
 
     # ২য় প্রায়োরিটি: বিং ইমেজ সার্চ (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
-    if len(candidates) < 15:
-        bing_pics = search_vercel_cloud_bridge(search_query, engine="bing")
-        candidates.extend(bing_pics)
+    bing_pics = search_vercel_cloud_bridge(subject, engine="bing")
+    candidates.extend(bing_pics)
+    candidates = list(dict.fromkeys(candidates))
+
+    if len(candidates) >= num_images_needed:
+        return candidates
 
     # ৩য় প্রায়োরিটি: উইকিমিডিয়া কমন্স (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
-    if len(candidates) < 8:
-        wiki_pics = search_vercel_cloud_bridge(search_query, engine="wiki")
-        candidates.extend(wiki_pics)
+    wiki_pics = search_vercel_cloud_bridge(subject, engine="wiki")
+    candidates.extend(wiki_pics)
+    candidates = list(dict.fromkeys(candidates))
 
     # ডিরেক্ট সোর্স ব্যাকআপ ফিল্টার (যদি এপিআই কোনো রেসপন্স না দেয় বা অফলাইন থাকে)
     if len(candidates) < 8:
-        direct_pics = search_bing_direct_photos(search_query, max_results=20)
+        direct_pics = search_bing_direct_photos(subject, max_results=20)
         candidates.extend(direct_pics)
+        candidates = list(dict.fromkeys(candidates))
     if len(candidates) < 8:
-        wiki_pics = search_wikimedia_images(search_query, max_results=15)
+        wiki_pics = search_wikimedia_images(subject, max_results=15)
         candidates.extend(wiki_pics)
+        candidates = list(dict.fromkeys(candidates))
 
     return list(dict.fromkeys(candidates))
 
 def filter_and_clean_downloaded_images(images_dir):
-    print("🧹 [Dynamic Smart Cleaner] Filtering small dimension logos and ad visuals...")
-    valid_count = 0
-    all_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-    
-    for fname in all_files:
-        fpath = os.path.join(images_dir, fname)
-        try:
-            file_size = os.path.getsize(fpath)
-            if file_size < 12288:
-                os.remove(fpath)
-                continue
-                
-            with Image.open(fpath) as img:
-                w, h = img.size
-                
-                if w < 380 or h < 280:
-                    img.close()
-                    os.remove(fpath)
-                    continue
-                    
-                aspect_ratio = w / float(h)
-                if aspect_ratio < 0.40 or aspect_ratio > 2.7:
-                    img.close()
-                    os.remove(fpath)
-                    continue
-                    
-                if img.mode == 'RGB':
-                    stat = ImageStat.Stat(img)
-                    if sum(stat.stddev) < 12: 
-                        img.close()
-                        os.remove(fpath)
-                        continue
-                        
-            valid_count += 1
-        except Exception:
-            try: os.remove(fpath)
-            except: pass
-            
-    print(f"✨ Post-Download Cleaning Complete! Retained {valid_count} verified images.")
+    # ব্যবহারকারীর রিকোয়েস্ট অনুযায়ী ঝাপসা ও লোগো ফিল্টার করার প্রসেস সম্পূর্ণ বাদ দেওয়া হলো
+    print("🧹 [Dynamic Smart Cleaner] Disabled as per user request. Retaining all downloaded photos.")
 
 def process_dynamic_thumbnail(wkspace, output_path):
     all_files = []
@@ -290,19 +256,20 @@ def clear_temporary_workspace(ws_dir):
     except: pass
 
 def render_segment_by_ffmpeg(clip_index, segment_duration, img_obj, output_segment_path):
-    frame_count = max(int(segment_duration * 25), 10)
+    # ভিডিও ৩০ এফপিএস-এ উন্নীত করা হয়েছে
+    frame_count = max(int(segment_duration * 30), 10)
     
     if img_obj["type"] == "landscape":
-        # সায়েন্টিফিক নোটেশন রুখতে ডেসিমেল ফর্ম্যাট নির্দিষ্ট করা হয়েছে এবং zoompan লুপ স্টেট দিয়ে জুম এলাইন করা হয়েছে
         step_str = f"{0.15 / frame_count:.6f}"
+        # কাপাকাপি বাগ দূর করতে 4K জুম মেথড এবং ব্যাক টু ১০৮০p ট্রিকস প্রয়োগ
         if clip_index % 2 == 0:
-            lens_filter = f"zoompan=z='min(1.15, zoom+{step_str})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=1920x1080:fps=25"
+            lens_filter = f"scale=3840x2160,zoompan=z='min(1.15, zoom+{step_str})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=3840x2160:fps=30,scale=1920x1080"
         else:
-            lens_filter = f"zoompan=z='if(lte(zoom,1.0),1.15,max(1.001,zoom-{step_str}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=1920x1080:fps=25"
+            lens_filter = f"scale=3840x2160,zoompan=z='if(lte(zoom,1.0),1.15,max(1.001,zoom-{step_str}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=3840x2160:fps=30,scale=1920x1080"
         
         cmd_arguments = [
             "ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "error", 
-            "-loop", "1", "-framerate", "25", "-i", img_obj["path"], 
+            "-loop", "1", "-framerate", "30", "-i", img_obj["path"], 
             "-vf", lens_filter, "-t", f"{segment_duration:.2f}", 
             "-c:v", "libx264", "-preset", "ultrafast", 
             "-tune", "zerolatency", "-pix_fmt", "yuv420p", output_segment_path
@@ -322,7 +289,7 @@ def render_segment_by_ffmpeg(clip_index, segment_duration, img_obj, output_segme
             "-loop", "1", "-i", bg_p, 
             "-loop", "1", "-i", fg_p, 
             "-filter_complex", slide_filter, "-map", "[out]", 
-            "-t", f"{segment_duration:.2f}", "-c:v", "libx264", "-preset", "ultrafast", 
+            "-t", f"{segment_duration:.2f}", "-r", "30", "-c:v", "libx264", "-preset", "ultrafast", 
             "-tune", "zerolatency", "-pix_fmt", "yuv420p", output_segment_path
         ]
         subprocess.run(cmd_arguments, check=True)
@@ -414,6 +381,13 @@ def get_audio_duration(audio_path):
         result = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", os.path.abspath(audio_path)], capture_output=True, text=True, check=True)
         return float(result.stdout.strip())
     except: return 0.0
+
+def escape_subtitles_path(path_str):
+    escaped = os.path.abspath(path_str).replace("\\", "/")
+    if ":" in escaped:
+        drive, rest = escaped.split(":", 1)
+        escaped = f"{drive}\\:{rest}"
+    return escaped
 
 def process_primary_automation_loop():
     if not os.path.exists("config.json"): return
@@ -511,9 +485,6 @@ def process_primary_automation_loop():
             raw_paras = text_chunk_collected.split("\n\n")
             raw_paras = [p.strip() for p in raw_paras if p.strip()]
 
-            # পুরো আর্টিকেলের একটি মূল গ্লোবাল বিষয়বস্তু (NBA/SpaceX/Golf ইত্যাদি নির্বিশেষে নিরপেক্ষ) ডিটেক্ট করা হলো
-            global_subject = get_primary_keyword_app_logic(text_chunk_collected)
-
             # কন্ডিশন ১: ভিডিওর দৈর্ঘ্য ৫ মিনিটের কম হলে (300 সেকেন্ডের নিচে)
             if calc_tlength < 300.0:
                 print("🟢 Video duration < 5 mins. Processing as a single unified timeline...")
@@ -541,7 +512,7 @@ def process_primary_automation_loop():
                 print(f"📥 Length-based download target: downloading {num_images_to_download} images for {total_n_segments} sentences.")
 
                 # গ্লোবাল সাবজেক্ট সার্চ
-                candidate_image_urls = scrape_images_strictly_web(vid_ttl, text_chunk_collected, embedded_page_photos, global_subject=global_subject)
+                candidate_image_urls = scrape_images_strictly_web(vid_ttl, text_chunk_collected, embedded_page_photos, num_images_needed=num_images_to_download)
 
                 successfully_got_downloads = 0
                 headers = {
@@ -566,7 +537,7 @@ def process_primary_automation_loop():
 
                 if not dflocst:
                     print("⚠️ No direct photos. Running fallback search with general title keywords...")
-                    fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], global_subject=global_subject)
+                    fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], num_images_needed=num_images_to_download)
                     for image_link in fallback_urls[:5]:
                         try:
                             rd = requests.get(image_link, timeout=5, headers=headers)
@@ -708,7 +679,7 @@ def process_primary_automation_loop():
 
                     # ৩টি প্যারাগ্রাফের টেক্সট থেকে একটিমাত্র কীওয়ার্ড বের করে গ্লোবাল লকিং ট্যাগসহ সার্চ
                     grp_keyword = get_primary_keyword_app_logic(grp_text)
-                    candidate_image_urls = scrape_images_strictly_web(vid_ttl, grp_text, embedded_page_photos, global_subject=global_subject)
+                    candidate_image_urls = scrape_images_strictly_web(vid_ttl, grp_text, embedded_page_photos, num_images_needed=num_images_to_download)
 
                     successfully_got_downloads = 0
                     headers = {
@@ -733,7 +704,7 @@ def process_primary_automation_loop():
 
                     if not dflocst:
                         print("⚠️ No direct photos. Running fallback search with general title keywords...")
-                        fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], global_subject=global_subject)
+                        fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], num_images_needed=num_images_to_download)
                         for image_link in fallback_urls[:5]:
                             try:
                                 rd = requests.get(image_link, timeout=5, headers=headers)
@@ -741,6 +712,7 @@ def process_primary_automation_loop():
                                     with open(os.path.join(images_dir, f"imv_dw{successfully_got_downloads:03d}.jpg"), 'wb') as fgxv: 
                                         fgxv.write(rd.content)
                                     successfully_got_downloads += 1
+                                    
                             except: pass
                         filter_and_clean_downloaded_images(images_dir)
                         dflocst = sorted([pzbv for pzbv in os.listdir(images_dir) if pzbv.endswith(('.jpg','.jpeg','.png'))])
@@ -852,7 +824,7 @@ def process_primary_automation_loop():
             safe_upload_to_youtube(fully_finalized_output, os.path.join(wkspace, "thumbnail.jpg"), vid_ttl, f"Complete Highlights Recap: {vid_ttl}\nGenerated automatically via AI Cloud System.")
             
             with open("processed_urls.txt", "a", encoding="utf-8") as fwx_docv: fwx_docv.write(lns+"\n")
-            print("================ 🎯 Complete Workflow Operations executed successfully seamlessly! 💯 =================\n")
+            print("================ 🎯 Complete Workflow Operations executed successfully seamlessly! 💯 ================\n")
 
         except Exception as errp: traceback.print_exc()
 
