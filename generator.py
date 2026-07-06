@@ -103,7 +103,7 @@ def get_primary_keyword_app_logic(text):
     filtered = [w for w in words if w.lower() not in stop_words]
     
     if len(filtered) < 2: 
-        return "Sports News"
+        return "Latest Update" # সম্পূর্ণ সর্বজনীন ও নিরপেক্ষ ফলব্যাক
         
     most_common = Counter(filtered).most_common(2)
     keyword = f"{most_common[0][0]} {most_common[1][0]}"
@@ -129,7 +129,47 @@ def search_vercel_cloud_bridge(keyword, engine="ddg"):
         
     return []
 
-def scrape_images_strictly_web(title, body_text, embedded_photos):
+def search_bing_direct_photos(keyword, max_results=20):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0 Safari/537.36'}
+        url = f"https://www.bing.com/images/async?q={urllib.parse.quote(keyword)}&first=1&count=25"
+        r = requests.get(url, headers=headers, timeout=8)
+        if r.status_code == 200:
+            urls = re.findall(r'murl&quot;:&quot;(http[^&]+)&quot;', r.text) or re.findall(r'"murl":"(http[^"]+)"', r.text)
+            clean_b_links = [u for u in list(dict.fromkeys(urls)) if any(ext in u.lower() for ext in ['.jpg','.jpeg','.png'])]
+            print(f"✅ Unblocked Direct Search Engine fetched: {len(clean_b_links)} direct high-res images!")
+            return clean_b_links[:max_results]
+    except Exception as eb:
+        print(f"Direct Search Exception: {eb}")
+    return []
+
+def search_wikimedia_images(keyword, max_results=15):
+    try:
+        url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {keyword}",
+            "gsrlimit": max_results,
+            "prop": "imageinfo",
+            "iiprop": "url"
+        }
+        r = requests.get(url, params=params, timeout=8)
+        if r.status_code == 200:
+            pages = r.json().get("query", {}).get("pages", {})
+            urls = []
+            for p in pages.values():
+                imageinfo = p.get("imageinfo")
+                if imageinfo and len(imageinfo) > 0:
+                    img_url = imageinfo[0].get("url")
+                    if img_url and any(ext in img_url.lower() for ext in ['.jpg','.png','.jpeg']):
+                        urls.append(img_url)
+            return urls
+    except: pass
+    return []
+
+def scrape_images_strictly_web(title, body_text, embedded_photos, global_subject=""):
     candidates = []
     
     for hero_p in embedded_photos:
@@ -137,18 +177,34 @@ def scrape_images_strictly_web(title, body_text, embedded_photos):
         
     subject = get_primary_keyword_app_logic(body_text)
 
+    # অপ্রাসঙ্গিক ছবি এড়াতে প্যারাগ্রাফ কিওয়ার্ডের সাথে পুরো আর্টিকেলের গ্লোবাল কিওয়ার্ড যুক্ত করার নিরপেক্ষ লজিক
+    if global_subject and global_subject.lower() not in subject.lower():
+        search_query = f"{subject} {global_subject}"
+    else:
+        search_query = subject
+
+    print(f"🎯 [Context Lock Active] Combining keywords for targeted search: '{search_query}'")
+
     # ১ম প্রায়োরিটি: ডাকডাকগো (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
-    ddg_pics = search_vercel_cloud_bridge(subject, engine="ddg")
+    ddg_pics = search_vercel_cloud_bridge(search_query, engine="ddg")
     candidates.extend(ddg_pics)
 
     # ২য় প্রায়োরিটি: বিং ইমেজ সার্চ (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
     if len(candidates) < 15:
-        bing_pics = search_vercel_cloud_bridge(subject, engine="bing")
+        bing_pics = search_vercel_cloud_bridge(search_query, engine="bing")
         candidates.extend(bing_pics)
 
     # ৩য় প্রায়োরিটি: উইকিমিডিয়া কমন্স (ভারসেল ক্লাউড ব্রিজের মাধ্যমে)
     if len(candidates) < 8:
-        wiki_pics = search_vercel_cloud_bridge(subject, engine="wiki")
+        wiki_pics = search_vercel_cloud_bridge(search_query, engine="wiki")
+        candidates.extend(wiki_pics)
+
+    # ডিরেক্ট সোর্স ব্যাকআপ ফিল্টার (যদি এপিআই কোনো রেসপন্স না দেয় বা অফলাইন থাকে)
+    if len(candidates) < 8:
+        direct_pics = search_bing_direct_photos(search_query, max_results=20)
+        candidates.extend(direct_pics)
+    if len(candidates) < 8:
+        wiki_pics = search_wikimedia_images(search_query, max_results=15)
         candidates.extend(wiki_pics)
 
     return list(dict.fromkeys(candidates))
@@ -220,6 +276,9 @@ def process_dynamic_thumbnail(wkspace, output_path):
 
 def clear_temporary_workspace(ws_dir):
     try:
+        # প্যারেন্ট ডিরেক্টরি বা ফোল্ডারটি রানারে তৈরি হওয়া নিশ্চিত করা হলো
+        os.makedirs(ws_dir, exist_ok=True)
+        
         for fname in ["audio.mp3", "subtitles.srt", "temp_slider.txt", "temp_output.mp4", "output_video.mp4", "thumbnail.jpg", "final_concat.txt"]:
             fpath = os.path.join(ws_dir, fname)
             if os.path.exists(fpath): os.remove(fpath)
@@ -234,6 +293,7 @@ def render_segment_by_ffmpeg(clip_index, segment_duration, img_obj, output_segme
     frame_count = max(int(segment_duration * 25), 10)
     
     if img_obj["type"] == "landscape":
+        # সায়েন্টিফিক নোটেশন রুখতে ডেসিমেল ফর্ম্যাট নির্দিষ্ট করা হয়েছে এবং zoompan লুপ স্টেট দিয়ে জুম এলাইন করা হয়েছে
         step_str = f"{0.15 / frame_count:.6f}"
         if clip_index % 2 == 0:
             lens_filter = f"zoompan=z='min(1.15, zoom+{step_str})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frame_count}:s=1920x1080:fps=25"
@@ -355,13 +415,6 @@ def get_audio_duration(audio_path):
         return float(result.stdout.strip())
     except: return 0.0
 
-def escape_subtitles_path(path_str):
-    escaped = os.path.abspath(path_str).replace("\\", "/")
-    if ":" in escaped:
-        drive, rest = escaped.split(":", 1)
-        escaped = f"{drive}\\:{rest}"
-    return escaped
-
 def process_primary_automation_loop():
     if not os.path.exists("config.json"): return
     with open("config.json", "r", encoding="utf-8") as cf: user_settings = json.load(cf)
@@ -458,12 +511,12 @@ def process_primary_automation_loop():
             raw_paras = text_chunk_collected.split("\n\n")
             raw_paras = [p.strip() for p in raw_paras if p.strip()]
 
+            # পুরো আর্টিকেলের একটি মূল গ্লোবাল বিষয়বস্তু (NBA/SpaceX/Golf ইত্যাদি নির্বিশেষে নিরপেক্ষ) ডিটেক্ট করা হলো
+            global_subject = get_primary_keyword_app_logic(text_chunk_collected)
+
             # কন্ডিশন ১: ভিডিওর দৈর্ঘ্য ৫ মিনিটের কম হলে (300 সেকেন্ডের নিচে)
             if calc_tlength < 300.0:
                 print("🟢 Video duration < 5 mins. Processing as a single unified timeline...")
-                
-                # সম্পূর্ণ ভিডিওর জন্য একটি একক কীওয়ার্ড বের করা হলো
-                global_subject = get_primary_keyword_app_logic(text_chunk_collected)
                 
                 images_dir = os.path.join(wkspace, "images")
                 targ_pcdir = os.path.join(wkspace, 'processed_frames')
@@ -487,7 +540,8 @@ def process_primary_automation_loop():
                 num_images_to_download = max(2, min(40, total_n_segments))
                 print(f"📥 Length-based download target: downloading {num_images_to_download} images for {total_n_segments} sentences.")
 
-                candidate_image_urls = scrape_images_strictly_web(vid_ttl, text_chunk_collected, embedded_page_photos)
+                # গ্লোবাল সাবজেক্ট সার্চ
+                candidate_image_urls = scrape_images_strictly_web(vid_ttl, text_chunk_collected, embedded_page_photos, global_subject=global_subject)
 
                 successfully_got_downloads = 0
                 headers = {
@@ -512,7 +566,7 @@ def process_primary_automation_loop():
 
                 if not dflocst:
                     print("⚠️ No direct photos. Running fallback search with general title keywords...")
-                    fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [])
+                    fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], global_subject=global_subject)
                     for image_link in fallback_urls[:5]:
                         try:
                             rd = requests.get(image_link, timeout=5, headers=headers)
@@ -652,9 +706,9 @@ def process_primary_automation_loop():
                     num_images_to_download = max(2, min(30, total_n_segments))
                     print(f"📥 Cluster download target: downloading {num_images_to_download} images for {total_n_segments} sentences.")
 
-                    # ৩টি প্যারাগ্রাফের টেক্সট থেকে একটিমাত্র কীওয়ার্ড বের করা হলো
+                    # ৩টি প্যারাগ্রাফের টেক্সট থেকে একটিমাত্র কীওয়ার্ড বের করে গ্লোবাল লকিং ট্যাগসহ সার্চ
                     grp_keyword = get_primary_keyword_app_logic(grp_text)
-                    candidate_image_urls = scrape_images_strictly_web(vid_ttl, grp_text, embedded_page_photos)
+                    candidate_image_urls = scrape_images_strictly_web(vid_ttl, grp_text, embedded_page_photos, global_subject=global_subject)
 
                     successfully_got_downloads = 0
                     headers = {
@@ -679,7 +733,7 @@ def process_primary_automation_loop():
 
                     if not dflocst:
                         print("⚠️ No direct photos. Running fallback search with general title keywords...")
-                        fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [])
+                        fallback_urls = scrape_images_strictly_web(vid_ttl, vid_ttl, [], global_subject=global_subject)
                         for image_link in fallback_urls[:5]:
                             try:
                                 rd = requests.get(image_link, timeout=5, headers=headers)
@@ -798,7 +852,7 @@ def process_primary_automation_loop():
             safe_upload_to_youtube(fully_finalized_output, os.path.join(wkspace, "thumbnail.jpg"), vid_ttl, f"Complete Highlights Recap: {vid_ttl}\nGenerated automatically via AI Cloud System.")
             
             with open("processed_urls.txt", "a", encoding="utf-8") as fwx_docv: fwx_docv.write(lns+"\n")
-            print("================ 🎯 Complete Workflow Operations executed successfully seamlessly! 💯 ================\n")
+            print("================ 🎯 Complete Workflow Operations executed successfully seamlessly! 💯 =================\n")
 
         except Exception as errp: traceback.print_exc()
 
