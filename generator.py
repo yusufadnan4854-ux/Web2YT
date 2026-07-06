@@ -94,6 +94,34 @@ def group_paragraphs(paragraphs, min_words=80):
     return groups
 
 def get_primary_keyword_app_logic(text):
+    # ১. নাম চেনার সিস্টেম (Name Recognition) - পাশাপাশি বড় হাতের একাধিক শব্দ সনাক্তকরণ
+    proper_nouns = re.findall(r'\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)+\b', text)
+    
+    # ক্রীড়াক্ষেত্রের কমন স্থান ও নন-প্লেয়ার ফ্রেজ যা খেলোয়াড়ের নাম নয়
+    stop_phrases = {
+        'bay area', 'golden state', 'los angeles', 'san francisco', 'summer league', 
+        'free agency', 'daily slop', 'sports news', 'latest news', 'mmb lounge',
+        'las vegas', 'new york', 'green bay', 'st louis', 'north', 'south', 'east', 'west',
+        'g league', 'summer league', 'nba free', 'free agent',
+        'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+        'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+    }
+    
+    valid_names = []
+    for pn in proper_nouns:
+        pn_clean = pn.strip()
+        words_count = len(pn_clean.split())
+        # মানুষের নাম সাধারণত ২ বা ৩ শব্দের হয়ে থাকে (যেমন: LeBron James, Anthony Davis)
+        if 2 <= words_count <= 3:
+            if pn_clean.lower() not in stop_phrases:
+                valid_names.append(pn_clean)
+                
+    if valid_names:
+        most_common_name = Counter(valid_names).most_common(1)[0][0]
+        print(f"👤 [Name Recognition] Primary subject detected as player/person: '{most_common_name}'")
+        return most_common_name
+
+    # ২. অটো-ফলব্যাক লজিক (মানুষের নাম না পাওয়া গেলে পূর্বের কিওয়ার্ড ফ্রিকোয়েন্সি লজিক চলবে)
     words = re.findall(r'\b[A-Z][a-z]{3,}\b', text) 
     if len(words) < 2:
         words = re.findall(r'\b[a-zA-Z]{4,}\b', text)
@@ -488,6 +516,9 @@ def process_primary_automation_loop():
             # কন্ডিশন ১: ভিডিওর দৈর্ঘ্য ৫ মিনিটের কম হলে (300 সেকেন্ডের নিচে)
             if calc_tlength < 300.0:
                 print("🟢 Video duration < 5 mins. Processing as a single unified timeline...")
+                
+                # সম্পূর্ণ ভিডিওর জন্য একটি একক কীওয়ার্ড বের করা হলো
+                global_subject = get_primary_keyword_app_logic(text_chunk_collected)
                 
                 images_dir = os.path.join(wkspace, "images")
                 targ_pcdir = os.path.join(wkspace, 'processed_frames')
