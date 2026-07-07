@@ -14,10 +14,10 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4 # v3 থেকে v4-এ আপডেট করা হয়েছে (Node 24 সাপোর্ট ও দ্রুত রেন্ডারিংয়ের জন্য)
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v5 # v4 থেকে v5-এ আপডেট করা হয়েছে
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -47,4 +47,5 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add processed_urls.txt || echo "No processed_urls.txt changed"
         git commit -m "Update Processed URLs Database [skip ci]" || echo "No changes to commit"
+        git pull --rebase origin main || echo "No pull needed" # গিট পুশ কনফ্লিক্ট এড়ানোর ট্রিকস
         git push || echo "No push needed"
