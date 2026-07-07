@@ -15,66 +15,72 @@ class ControlPanelApp(ctk.CTk):
         super().__init__()
 
         self.title("AI Video Generator - Master Settings Panel v2.3")
-        self.geometry("680x850") 
+        self.geometry("680x920") 
         self.resizable(False, False)
 
         # টাইটেল
         self.title_label = ctk.CTkLabel(self, text="AI Video Automation Config Manager", font=ctk.CTkFont(size=18, weight="bold"))
-        self.title_label.pack(pady=15)
+        self.title_label.pack(pady=12)
 
         # ১. আরএসএস ইউআরএল (একাধিক দেওয়া যাবে কমা দিয়ে)
-        ctk.CTkLabel(self, text="Target RSS Feed URLs (comma separated for multiple feeds):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.url_entry = ctk.CTkEntry(self, width=600, height=35)
-        self.url_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Target RSS Feed URLs (comma separated for multiple feeds):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.url_entry = ctk.CTkEntry(self, width=600, height=32)
+        self.url_entry.pack(padx=40, pady=(0, 6))
 
         # ২. টাইটেল নিষিদ্ধ কিওয়ার্ড ফিল্টার
-        ctk.CTkLabel(self, text="Exclude Keywords in Title (comma separated):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.keyword_entry = ctk.CTkEntry(self, width=600, height=35)
-        self.keyword_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Exclude Keywords in Title (comma separated):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.keyword_entry = ctk.CTkEntry(self, width=600, height=32)
+        self.keyword_entry.pack(padx=40, pady=(0, 6))
 
         # ৩. আর্টিকেলের ভেতরের নিষিদ্ধ কিওয়ার্ড ফিল্টার
-        ctk.CTkLabel(self, text="Exclude Keywords inside Article Body (comma separated):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.body_keyword_entry = ctk.CTkEntry(self, width=600, height=35)
-        self.body_keyword_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Exclude Keywords inside Article Body (comma separated):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.body_keyword_entry = ctk.CTkEntry(self, width=600, height=32)
+        self.body_keyword_entry.pack(padx=40, pady=(0, 6))
 
         # ৪. মিনিমাম ওয়ার্ড ফিল্টার
-        ctk.CTkLabel(self, text="Minimum Article Word Count (to make video):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.word_count_entry = ctk.CTkEntry(self, width=600, height=35, placeholder_text="e.g. 200")
-        self.word_count_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Minimum Article Word Count (to make video):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.word_count_entry = ctk.CTkEntry(self, width=600, height=32, placeholder_text="e.g. 200")
+        self.word_count_entry.pack(padx=40, pady=(0, 6))
 
         # ৫. আর্টিকেল টাইমিং রেঞ্জ ফিল্টার (সম্পূর্ণ ফ্লেক্সিবল ইনপুট)
-        ctk.CTkLabel(self, text="Max Article Age in Hours (e.g. 1 for 1 hour, 0.5 for 30 mins, 9999 for All Articles):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.age_entry = ctk.CTkEntry(self, width=600, height=35, placeholder_text="e.g. 24")
-        self.age_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Max Article Age in Hours (e.g. 1 for 1 hour, 0.5 for 30 mins, 9999 for All Articles):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.age_entry = ctk.CTkEntry(self, width=600, height=32, placeholder_text="e.g. 24")
+        self.age_entry.pack(padx=40, pady=(0, 6))
 
         # ৬. ভয়েস সিলেকশন
-        ctk.CTkLabel(self, text="Select AI Voice:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
+        ctk.CTkLabel(self, text="Select AI Voice:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
         self.voices_list = [
             "en-US-BrianNeural (US Male - Deep/Professional)",
             "en-US-GuyNeural (US Male - Casual)",
             "en-GB-RyanNeural (UK Male - Elegant)"
         ]
-        self.voice_combo = ctk.CTkComboBox(self, values=self.voices_list, width=600)
-        self.voice_combo.pack(padx=40, pady=(0, 8))
+        self.voice_combo = ctk.CTkComboBox(self, values=self.voices_list, width=600, height=32)
+        self.voice_combo.pack(padx=40, pady=(0, 6))
 
         # ७. সাবটাইটেল টেক্সট কালার
-        ctk.CTkLabel(self, text="Subtitle Text Color (HEX):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.text_color_entry = ctk.CTkEntry(self, width=600, height=35)
-        self.text_color_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Subtitle Text Color (HEX):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.text_color_entry = ctk.CTkEntry(self, width=600, height=32)
+        self.text_color_entry.pack(padx=40, pady=(0, 6))
 
         # ৮. ওভারলে কালার
-        ctk.CTkLabel(self, text="Background Overlay Color (HEX):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.bg_color_entry = ctk.CTkEntry(self, width=600, height=35)
-        self.bg_color_entry.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Background Overlay Color (HEX):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.bg_color_entry = ctk.CTkEntry(self, width=600, height=32)
+        self.bg_color_entry.pack(padx=40, pady=(0, 6))
 
         # ৯. ওভারলে ব্যাকগ্রাউন্ড স্টাইল
-        ctk.CTkLabel(self, text="Overlay Style:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(8, 2))
-        self.style_combo = ctk.CTkComboBox(self, values=["Semi-Transparent Box (Style 3)", "Outline + Drop Shadow (Style 1)"], width=600)
-        self.style_combo.pack(padx=40, pady=(0, 8))
+        ctk.CTkLabel(self, text="Overlay Style:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.style_combo = ctk.CTkComboBox(self, values=["Semi-Transparent Box (Style 3)", "Outline + Drop Shadow (Style 1)"], width=600, height=32)
+        self.style_combo.pack(padx=40, pady=(0, 6))
+
+        # ৯.৫ সাউন্ড ইফেক্ট ভলিউম
+        ctk.CTkLabel(self, text="Sound Effects Volume (0.0 = Mute, 0.3 = 30%, 1.0 = Max):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=40, pady=(6, 2))
+        self.sfx_volume_slider = ctk.CTkSlider(self, from_=0.0, to=1.0, number_of_steps=100, width=600)
+        self.sfx_volume_slider.pack(padx=40, pady=(0, 6))
+        self.sfx_volume_slider.set(0.3)
 
         # ১০. ফন্ট সাইজ এবং পজিশন স্লাইডার
         self.slider_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.slider_frame.pack(fill="x", padx=40, pady=10)
+        self.slider_frame.pack(fill="x", padx=40, pady=8)
 
         self.font_size_slider = ctk.CTkSlider(self.slider_frame, from_=12, to=36, number_of_steps=24, width=280)
         self.font_size_slider.pack(side="left", padx=(0, 20))
@@ -91,10 +97,10 @@ class ControlPanelApp(ctk.CTk):
             fg_color="#2ecc71", 
             hover_color="#27ae60",
             font=ctk.CTkFont(size=14, weight="bold"),
-            height=45,
+            height=40,
             command=self.save_and_push
         )
-        self.save_btn.pack(pady=15, fill="x", padx=40)
+        self.save_btn.pack(pady=12, fill="x", padx=40)
 
         self.status_lbl = ctk.CTkLabel(self, text="Status: Idle", text_color="gray", font=ctk.CTkFont(size=12))
         self.status_lbl.pack()
@@ -115,6 +121,7 @@ class ControlPanelApp(ctk.CTk):
                 self.text_color_entry.insert(0, data.get("font_color", ""))
                 self.bg_color_entry.insert(0, data.get("bg_color", ""))
                 self.style_combo.set("Semi-Transparent Box (Style 3)" if data.get("border_style") == 3 else "Outline + Drop Shadow (Style 1)")
+                self.sfx_volume_slider.set(data.get("sfx_volume", 0.3))
                 self.font_size_slider.set(data.get("font_size", 22))
                 self.margin_v_slider.set(data.get("margin_v", 45))
                 return
@@ -130,6 +137,7 @@ class ControlPanelApp(ctk.CTk):
         self.text_color_entry.insert(0, "#FFFFFF")
         self.bg_color_entry.insert(0, "#000000")
         self.style_combo.set("Semi-Transparent Box (Style 3)")
+        self.sfx_volume_slider.set(0.3)
 
     def save_and_push(self):
         self.save_btn.configure(state="disabled")
@@ -159,6 +167,7 @@ class ControlPanelApp(ctk.CTk):
             "bg_color": self.bg_color_entry.get().strip(),
             "border_style": border_style,
             "bg_opacity": 0.6,  
+            "sfx_volume": float(self.sfx_volume_slider.get()),
             "font_size": int(self.font_size_slider.get()),
             "margin_v": int(self.margin_v_slider.get())
         }
@@ -172,7 +181,8 @@ class ControlPanelApp(ctk.CTk):
             subprocess.run(["git", "push"], check=True)
             self.status_lbl.configure(text="SUCCESS! New rules synced with GitHub Cloud.", text_color="#2ecc71")
         except Exception as e:
-            self.status_lbl.configure(text="Git Sync Failed! Check logs.", text_color="red")
+            # গিট পুশ ফেইল হলেও লোকাল ফাইলটি কিন্তু সেভ হয়েছে, তাই ব্যবহারকারীকে সঠিক তথ্য দেওয়া হলো
+            self.status_lbl.configure(text="Saved Locally, but Git Sync Failed! Check logs.", text_color="orange")
             with open(LOG_FILE, "a") as lf:
                 lf.write(traceback.format_exc() + "\n")
         finally:
