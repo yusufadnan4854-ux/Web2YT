@@ -93,12 +93,9 @@ def group_paragraphs(paragraphs, min_words=80):
             
     return groups
 
-# --- নতুনভাবে আপগ্রেড করা স্মার্ট কি-ওয়ার্ড মেথড (LeBron, De'Aaron, O'Neal ইত্যাদি নাম হ্যান্ডেল করার জন্য) ---
+# --- ক্যাপিটাল লেটার, অ্যাপোস্ট্রফি ও হাইফেনসহ সব প্লেয়ারদের নাম চেনার স্মার্ট কিওয়ার্ড ফাংশন ---
 def get_primary_keyword_app_logic(text):
-    # এই রেজেক্সটি ভেতরের বড় হাতের অক্ষর, অ্যাপোস্ট্রফি ও হাইফেনসহ যেকোনো কঠিন নাম সফলভাবে ডিটেক্ট করতে পারে 
     raw_words = re.findall(r"\b[A-Z][a-zA-Z\'-]{3,}\b", text)
-    
-    # acronyms (যেমন: NBA, ESPN, NFL, USA) ফিল্টার করে রিমুভ করা হচ্ছে যাতে শুধু অরিজিনাল প্লেয়ারের নাম থাকে
     words = [w for w in raw_words if not w.isupper()]
     
     if len(words) < 2:
@@ -116,7 +113,6 @@ def get_primary_keyword_app_logic(text):
     keyword = f"{most_common[0][0]} {most_common[1][0]}"
     print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
     return keyword
-# ------------------------------------------------------------------------
 
 def search_vercel_cloud_bridge(keyword, engine="ddg"):
     vercel_endpoint = os.environ.get("VERCEL_BRIDGE_URL")
@@ -516,8 +512,11 @@ def process_primary_automation_loop():
             raw_paras = text_chunk_collected.split("\n\n")
             raw_paras = [p.strip() for p in raw_paras if p.strip()]
 
-            if calc_tlength < 300.0:
-                print("🟢 Video duration < 5 mins. Processing as a single unified timeline...")
+            # =========================================================================
+            # কন্ডিশন ১: ভিডিওর দৈর্ঘ্য ৩ মিনিটের কম হলে (১৮০ সেকেন্ডের নিচে) -> ১টি কি-ওয়ার্ড
+            # =========================================================================
+            if calc_tlength < 180.0:
+                print("🟢 Video duration < 3 mins. Processing as a single unified timeline (1 keyword)...")
                 
                 global_subject = get_primary_keyword_app_logic(text_chunk_collected)
                 
@@ -663,13 +662,22 @@ def process_primary_automation_loop():
                 
                 rendered_paragraph_videos.append(para_final_output)
 
+            # =========================================================================
+            # কন্ডিশন ২: ভিডিওর দৈর্ঘ্য ৩ মিনিটের বেশি হলে (১৮০ সেকেন্ড বা তার বেশি) -> ডায়নামিক কি-ওয়ার্ডস
+            # =========================================================================
             else:
-                print("🔵 Video duration >= 5 mins. Grouping every 3 paragraphs as 1 consolidated cluster...")
+                num_clusters = int(calc_tlength // 180) + 1
+                print(f"🔵 Video duration >= 3 mins ({calc_tlength:.2f}s). Grouping into {num_clusters} consolidated clusters dynamically...")
                 
+                actual_clusters = max(1, min(num_clusters, len(raw_paras)))
                 paragraph_groups = []
-                for i in range(0, len(raw_paras), 3):
-                    chunk = raw_paras[i:i+3]
-                    paragraph_groups.append("\n\n".join(chunk))
+                avg = len(raw_paras) / float(actual_clusters)
+                last = 0.0
+                while last < len(raw_paras):
+                    group_chunk = raw_paras[int(last):int(last + avg)]
+                    if group_chunk:
+                        paragraph_groups.append("\n\n".join(group_chunk))
+                    last += avg
 
                 for idx, grp_text in enumerate(paragraph_groups):
                     para_ws = os.path.join(wkspace, f"para_{idx}")
