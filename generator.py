@@ -35,7 +35,12 @@ def scrape_article(url):
         soup = BeautifulSoup(response.text, 'html.parser')
         
         cleaned_paragraphs = []
-        unwanted_phrases = ["follow", "read more", "cookies", "subscribe", "social media information", "like our page", "bgn community post", "featured in the linc", "the linc!"]
+        unwanted_phrases = [
+            "follow", "read more", "cookies", "subscribe", "social media information", 
+            "like our page", "bgn community post", "featured in the linc", "the linc!",
+            "facebook, instagram", "tiktok, x", "whatsapp, linkedin", "sign up here", 
+            "download here", "newsletters:", "home delivery:"
+        ]
         
         for p in soup.find_all('p'):
             text = p.get_text().strip()
@@ -105,10 +110,12 @@ def get_primary_keyword_app_logic(text):
                   'about', 'like', 'just', 'when', 'what', 'know', 'feel', 'they'}
     filtered = [w for w in words if w.lower() not in stop_words]
     
-    if len(filtered) < 2: 
-        print("📊 [App Matching Logic] Primary Subject Keyword Extracted: 'NBA Basketball'")
-        return "NBA Basketball"
-    
+    if len(filtered) == 0: 
+        return ""
+    if len(filtered) == 1:
+        print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{filtered[0]}'")
+        return filtered[0]
+        
     most_common = Counter(filtered).most_common(2)
     keyword = f"{most_common[0][0]} {most_common[1][0]}"
     print(f"📊 [App Matching Logic] Primary Subject Keyword Extracted: '{keyword}'")
@@ -183,9 +190,7 @@ def scrape_images_strictly_web(title, body_text, embedded_photos, num_images_nee
 
     if append_toggle and append_word:
         stop_phrases = {
-            'los angeles', 'golden state', 'nba basketball', 'summer league', 
-            'boston celtics', 'new york', 'miami heat', 'bay area', 'dallas mavericks', 
-            'lakers', 'latest update', 'sports news', 'league update', 'news report'
+            'latest news', 'breaking news', 'latest update', 'news update', 'sports news', 'news report'
         }
         is_name = False
         
@@ -193,7 +198,7 @@ def scrape_images_strictly_web(title, body_text, embedded_photos, num_images_nee
             is_name = bool(re.match(r'^([A-Z][a-zA-Z\'-]+\s+){1,2}[A-Z][a-zA-Z\'-]+$', subject.strip()))
             
         if not is_name:
-            subject = f"{subject} {append_word}"
+            subject = f"{subject} {append_word}".strip()
             print(f"🔧 [Modifier Action] Keyword is not a name. Custom suffix appended -> Final Search: '{subject}'")
         else:
             print(f"👤 [Modifier Action] Player name detected! Prefix/Suffix addition skipped -> Final Search: '{subject}'")
@@ -475,9 +480,9 @@ def process_primary_automation_loop():
                     vid_ttl = slug_string.replace('-', ' ').replace('_', ' ').strip().title()
                 
                 if not vid_ttl:
-                    vid_ttl = "NBA Latest News Update"
+                    vid_ttl = "Latest Update"
             except Exception:
-                vid_ttl = "NBA Latest News Update"
+                vid_ttl = "Latest Update"
 
         print(f"\n=========================================================================")
         print(f"[{track_loop_counter+1}/{len(final_action_items)}] Processing Target Article: >> {vid_ttl}")
